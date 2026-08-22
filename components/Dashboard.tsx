@@ -90,7 +90,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
 
   const stats = [
     { label: 'Total Videos', value: totalVideos.toString(), icon: Video, change: videoData ? 'Processed' : 'None yet' },
-    { label: 'Events Detected', value: totalEvents.toString(), icon: Activity, change: 'Real events' },
+    { label: 'Segments Detected', value: totalEvents.toString(), icon: Activity, change: 'Motion windows' },
     { label: 'High Priority', value: highPriorityCount.toString(), icon: AlertTriangle, change: 'Unreviewed' },
     { label: 'Reviewed', value: reviewedCount.toString(), icon: CheckCircle, change: '0%' },
   ]
@@ -222,7 +222,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <div className="space-y-6">
             {[
               { label: 'Processing Queue', value: '0/1', percent: 0 },
-              { label: 'Events Detected', value: totalEvents.toString(), percent: (totalEvents / 10) * 100 },
+              { label: 'Segments Detected', value: totalEvents.toString(), percent: (totalEvents / 10) * 100 },
               { label: 'Quality Score', value: videoData ? (videoData.quality_metrics.observability * 100).toFixed(0) + '%' : '—', percent: (videoData?.quality_metrics.observability ?? 0) * 100 },
             ].map((item, i) => (
               <div key={i}>
@@ -268,7 +268,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                       {video.duration}
                     </span>
                     <span>•</span>
-                    <span>{video.events} events</span>
+                    <span>{video.events} segments</span>
                     <span>•</span>
                     <span className="flex items-center gap-1 font-mono">
                       <Eye className="w-4 h-4" />

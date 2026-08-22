@@ -97,7 +97,7 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
   const unusualCount = videoData.events.filter(e => e.type === 'unusual_motion').length
 
   const filterProfiles = [
-    { id: 'all', label: 'All Events', count: videoData.event_count, icon: Activity },
+    { id: 'all', label: 'All Segments', count: videoData.event_count, icon: Activity },
     { id: 'phone', label: 'Phone Activity', count: phoneCount, icon: Phone },
     { id: 'proximity', label: 'Proximity', count: proximityCount, icon: Users },
     { id: 'unusual', label: 'Unusual Motion', count: unusualCount, icon: TrendingUp },
@@ -123,7 +123,7 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
               <span>•</span>
               <span>{formatTime(videoDuration)}</span>
               <span>•</span>
-              <span>{videoData.event_count} events</span>
+              <span>{videoData.event_count} segments</span>
             </div>
           </div>
         </div>
@@ -274,7 +274,7 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
 
       <div className="card p-6">
         <h2 className="text-lg font-semibold mb-4">
-          Detected Events 
+          Detected Segments
           {activeFilter !== 'all' && <span className="text-muted-foreground ml-2 text-sm">({filteredEvents.length} filtered)</span>}
         </h2>
         <div className="space-y-3">
