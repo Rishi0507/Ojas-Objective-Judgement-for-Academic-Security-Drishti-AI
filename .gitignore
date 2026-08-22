@@ -55,3 +55,6 @@ m8_9_golang/models/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE/Agent config
+.claude/
