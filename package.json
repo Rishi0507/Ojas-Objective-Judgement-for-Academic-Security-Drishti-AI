@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.6.5",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "framer-motion": "^10.16.0",
