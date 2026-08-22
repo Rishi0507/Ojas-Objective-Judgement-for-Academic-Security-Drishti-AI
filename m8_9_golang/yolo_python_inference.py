@@ -141,12 +141,8 @@ class YOLOInferenceService:
             label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             label_y = max(y1 - 10, label_size[1])
             
-            cv2.rectangle(img, 
-                         (x1, label_y - label_size[1] - 5), 
-                         (x1 + label_size[0], label_y + 5), 
-                         color, -1)
             cv2.putText(img, label, (x1, label_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         
         # Save annotated frame
         cv2.imwrite(output_path, img)
