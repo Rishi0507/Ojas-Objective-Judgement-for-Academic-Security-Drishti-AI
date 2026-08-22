@@ -1,11 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Bell, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Header() {
   const [showNotifications, setShowNotifications] = useState(false)
+  const [unreviewedEvents, setUnreviewedEvents] = useState<any[]>([])
+
+  useEffect(() => {
+    const loadData = () => {
+      fetch('/api/video')
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error && data.events) {
+            const highPriority = data.events.filter((e: any) => e.priority === 'high')
+            setUnreviewedEvents(highPriority)
+          } else {
+            setUnreviewedEvents([])
+          }
+        })
+        .catch(() => setUnreviewedEvents([]))
+    }
+    loadData()
+    const interval = setInterval(loadData, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <header className="h-16 bg-card border-b border-border px-6 flex items-center justify-between">
@@ -27,7 +47,9 @@ export default function Header() {
             className="relative p-2.5 hover:bg-accent rounded-lg transition-colors"
           >
             <Bell className="w-5 h-5 text-muted-foreground" strokeWidth={2} />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full" />
+            {unreviewedEvents.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full" />
+            )}
           </button>
 
           <AnimatePresence>
@@ -47,11 +69,27 @@ export default function Header() {
                   <div className="p-4 border-b border-border bg-muted/30">
                     <h3 className="font-semibold text-foreground">Notifications</h3>
                   </div>
-                  <div className="p-8 text-center flex flex-col items-center">
-                    <Bell className="w-8 h-8 text-muted-foreground/30 mb-3" />
-                    <p className="text-sm font-medium text-foreground">All caught up!</p>
-                    <p className="text-xs text-muted-foreground mt-1">Check back later for new alerts.</p>
-                  </div>
+                  {unreviewedEvents.length > 0 ? (
+                    <div className="max-h-[300px] overflow-y-auto">
+                      {unreviewedEvents.map((ev, i) => (
+                        <div key={ev.id || i} className="p-4 border-b border-border hover:bg-accent/50 transition-colors cursor-pointer">
+                          <div className="flex items-start justify-between mb-1">
+                            <span className="font-medium text-sm text-red-600">{ev.primary_label || 'Offence Detected'}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {Math.floor(ev.start / 60)}:{(Math.floor(ev.start) % 60).toString().padStart(2, '0')}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{ev.summary || 'Unreviewed activity requires your attention.'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center flex flex-col items-center">
+                      <Bell className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                      <p className="text-sm font-medium text-foreground">All caught up!</p>
+                      <p className="text-xs text-muted-foreground mt-1">Check back later for new alerts.</p>
+                    </div>
+                  )}
                 </motion.div>
               </>
             )}
