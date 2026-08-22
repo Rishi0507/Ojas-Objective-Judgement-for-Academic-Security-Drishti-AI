@@ -101,6 +101,7 @@ class MotionDetector:
         w_bg: float = 0.35,
         w_flow: float = 0.30,
         warmup_frames: int = 10,
+        motion_scale: float = 1.0,
     ):
         if abs(w_diff + w_bg + w_flow - 1.0) > 1e-3:
             raise ValueError(
@@ -114,6 +115,23 @@ class MotionDetector:
         self.diff_k = max(1, diff_k)
         self.diff_thresh = diff_thresh
         self.min_area_px = min_area_px
+
+        # Speed/accuracy tradeoff knob, OFF by default (1.0 = full
+        # resolution, original behavior). All three ensemble methods
+        # (frame-diff, MOG2/KNN, and — the dominant cost, ~80% of Module 3's
+        # time — Farneback optical flow, with its vectors correctly rescaled
+        # back to full-res displacement units) can run on a downscaled copy
+        # for speed; masks/flow fields are resized back up so every caller
+        # downstream (Module 4/5/6) sees the same shapes as before.
+        # Measured: motion_scale=0.5 gives a real ~2.5-3x speedup on Module 3
+        # (the score signal itself stays ~0.995 correlated with full-res),
+        # BUT Module 7's hysteresis thresholds are sensitive to exactly
+        # where borderline frames land — in one real test this changed the
+        # detected event count from 4 to 1. That's too large a risk to
+        # default on for an evidence tool; enable it explicitly via
+        # --motion-scale if you've validated it against your own footage
+        # and prioritize speed over that risk.
+        self.motion_scale = motion_scale
 
         # Warm-up window: during the first `warmup_frames` frames, the
         # background subtractors are still learning the background model
@@ -267,11 +285,19 @@ class MotionDetector:
     # ---------------- internal methods ----------------
 
     def _frame_diff(self, gray: np.ndarray) -> np.ndarray:
-        """Compute |I_t - I_{t-k}|, threshold, return binary mask."""
-        # Buffer stores the last (diff_k + 1) grayscale frames so we can
-        # compute |I_t - I_{t-k}|. After appending current, we have:
+        """Compute |I_t - I_{t-k}|, threshold, return a full-resolution
+        binary mask (computed on a downscaled copy for speed — see
+        self.motion_scale in __init__)."""
+        if self.motion_scale < 1.0:
+            small = cv2.resize(gray, None, fx=self.motion_scale, fy=self.motion_scale,
+                                interpolation=cv2.INTER_AREA)
+        else:
+            small = gray
+
+        # Buffer stores the last (diff_k + 1) downscaled grayscale frames so
+        # we can compute |I_t - I_{t-k}|. After appending current, we have:
         #   buffer[-1] = I_t, buffer[0] = I_{t-k}
-        self._gray_buffer.append(gray)
+        self._gray_buffer.append(small)
         if len(self._gray_buffer) > self.diff_k + 1:
             self._gray_buffer.pop(0)
 
@@ -279,18 +305,31 @@ class MotionDetector:
             # Not enough history yet — need k prior frames before current.
             return np.zeros_like(gray, dtype=np.uint8)
 
-        prev_gray = self._gray_buffer[0]
-        diff = cv2.absdiff(prev_gray, gray)
+        prev_small = self._gray_buffer[0]
+        diff = cv2.absdiff(prev_small, small)
         _, mask = cv2.threshold(diff, self.diff_thresh, 255, cv2.THRESH_BINARY)
+
+        if self.motion_scale < 1.0:
+            mask = cv2.resize(mask, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_NEAREST)
         return mask
 
     def _background_subtract(self, frame_bgr: np.ndarray) -> np.ndarray:
         """
         Run both MOG2 and KNN, average their (shadow-cleaned) masks.
-        Averaging reduces single-method false positives.
+        Averaging reduces single-method false positives. Computed on a
+        downscaled copy for speed (see self.motion_scale); the background
+        models themselves just track the smaller image consistently, no
+        correctness issue since they never see full resolution here.
         """
-        m_mog2 = self.bg_mog2.apply(frame_bgr)
-        m_knn = self.bg_knn.apply(frame_bgr)
+        orig_h, orig_w = frame_bgr.shape[:2]
+        if self.motion_scale < 1.0:
+            small_bgr = cv2.resize(frame_bgr, None, fx=self.motion_scale, fy=self.motion_scale,
+                                    interpolation=cv2.INTER_AREA)
+        else:
+            small_bgr = frame_bgr
+
+        m_mog2 = self.bg_mog2.apply(small_bgr)
+        m_knn = self.bg_knn.apply(small_bgr)
 
         # Shadows are marked as 127 by OpenCV when detectShadows=True.
         # We want foreground = 255 only, so zero out shadow pixels.
@@ -302,26 +341,49 @@ class MotionDetector:
         combined = ((m_mog2.astype(np.uint16) + m_knn.astype(np.uint16)) / 2).astype(np.uint8)
         # Threshold the averaged mask back to binary.
         _, combined = cv2.threshold(combined, 64, 255, cv2.THRESH_BINARY)
+
+        if self.motion_scale < 1.0:
+            combined = cv2.resize(combined, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
         return combined
 
     def _optical_flow(self, gray: np.ndarray):
         """
-        Dense Farneback optical flow vs the previous gray frame.
-        Returns (flow_field HxWx2, magnitude HxW).
+        Dense Farneback optical flow vs the previous gray frame. This is by
+        far the most expensive of the three ensemble methods (measured:
+        disabling it cuts Module 3's per-video time by ~75-90%), so like
+        frame-diff/background-subtraction it runs on a downscaled copy for
+        speed. Unlike a binary mask, a flow field's pixel values ARE
+        physical displacement vectors — resizing the field back up isn't
+        enough on its own, the vector magnitudes also have to be scaled by
+        1/motion_scale (a 3px shift in a half-size image is a 6px shift at
+        full size), or downstream consumers (Module 6's camera-shake
+        detection reads flow_field directly) would silently see displacement
+        magnitudes too small by exactly motion_scale.
+
+        Returns (flow_field HxWx2, magnitude HxW), both at full resolution.
         """
+        orig_h, orig_w = gray.shape
+        if self.motion_scale < 1.0:
+            small = cv2.resize(gray, None, fx=self.motion_scale, fy=self.motion_scale,
+                                interpolation=cv2.INTER_AREA)
+        else:
+            small = gray
+
         if self._prev_gray_for_flow is None:
-            self._prev_gray_for_flow = gray
+            self._prev_gray_for_flow = small
             # No flow on the first frame; return zeros.
-            h, w = gray.shape
-            return np.zeros((h, w, 2), dtype=np.float32), np.zeros((h, w), dtype=np.float32)
+            return np.zeros((orig_h, orig_w, 2), dtype=np.float32), np.zeros((orig_h, orig_w), dtype=np.float32)
 
         flow = cv2.calcOpticalFlowFarneback(
-            self._prev_gray_for_flow, gray, None, **self._flow_params
+            self._prev_gray_for_flow, small, None, **self._flow_params
         )
-        self._prev_gray_for_flow = gray
+        self._prev_gray_for_flow = small
+
+        if self.motion_scale < 1.0:
+            flow = cv2.resize(flow, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR) / self.motion_scale
 
         magnitude, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-        return flow, magnitude.astype(np.float32)
+        return flow.astype(np.float32), magnitude.astype(np.float32)
 
     def _ensemble_mask(
         self,
@@ -531,6 +593,7 @@ def run_on_manifest(
     norm_low_pct: float = 5.0,
     norm_high_pct: float = 95.0,
     compute_jerk: bool = True,
+    motion_scale: float = 1.0,
 ) -> dict:
     """
     Read Module 2's manifest.json, process every sampled frame through
@@ -570,6 +633,7 @@ def run_on_manifest(
         w_bg=w_bg,
         w_flow=w_flow,
         warmup_frames=warmup_frames,
+        motion_scale=motion_scale,
     )
 
     if save_masks_dir:
@@ -708,6 +772,12 @@ def main():
                         help="Upper percentile for normalization (default 95.0)")
     parser.add_argument("--disable-jerk", action="store_true",
                         help="Skip the temporal spectral-residual jerk_score pass (default: enabled).")
+    parser.add_argument("--motion-scale", type=float, default=1.0,
+                        help="Downscale factor for all 3 ensemble methods, e.g. 0.5 = half resolution "
+                             "(default 1.0, full resolution). Measured ~2.5-3x faster Module 3 at 0.5, "
+                             "but can shift which frames cross Module 7's hysteresis thresholds — in one "
+                             "test this changed detected event count from 4 to 1. Opt in deliberately, "
+                             "validate against your own footage before trusting it as default.")
     args = parser.parse_args()
 
     total = args.w_diff + args.w_bg + args.w_flow
@@ -730,6 +800,7 @@ def main():
         norm_low_pct=args.norm_low_pct,
         norm_high_pct=args.norm_high_pct,
         compute_jerk=not args.disable_jerk,
+        motion_scale=args.motion_scale,
     )
 
     print(json.dumps(summary, indent=2))

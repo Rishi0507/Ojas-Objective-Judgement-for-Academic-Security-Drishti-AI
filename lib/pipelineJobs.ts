@@ -110,7 +110,80 @@ function watchProgressFile(
   }, 1500)
 }
 
-export async function processUploadedVideo(jobId: string, videoPath: string, filename: string) {
+async function probeCodec(videoPath: string, streamSelector: 'v:0' | 'a:0'): Promise<string | null> {
+  try {
+    const out = await runCommand('ffprobe', [
+      '-v', 'error',
+      '-select_streams', streamSelector,
+      '-show_entries', 'stream=codec_name',
+      '-of', 'csv=p=0',
+      videoPath,
+    ], ROOT)
+    const codec = out.trim().split('\n')[0]?.trim()
+    return codec || null
+  } catch {
+    return null
+  }
+}
+
+const BROWSER_SAFE_VIDEO_CODECS = new Set(['h264'])
+const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
+
+/**
+ * Generates a browser-playable MP4 proxy of the source video. Real CCTV
+ * footage in this project is frequently old MPEG-4 Part 2 ("DivX"-style
+ * codec, ffprobe reports it as "mpeg4") — no modern browser's <video>
+ * element can decode that natively, and no Content-Type/container fix can
+ * work around a genuinely unsupported codec, only a real transcode can.
+ * If the source is already H.264 (+ AAC/no audio), this is just a fast
+ * stream-copy remux into .mp4 (near-instant, no quality loss). Runs
+ * concurrently with the Python pipeline (see processUploadedVideo) rather
+ * than after it, so on typical clip lengths the transcode is hidden inside
+ * that window instead of adding to total wait time.
+ */
+async function generatePlaybackProxy(videoPath: string, outDir: string): Promise<string> {
+  const outPath = path.join(outDir, 'playback.mp4')
+  const [videoCodec, audioCodec] = await Promise.all([
+    probeCodec(videoPath, 'v:0'),
+    probeCodec(videoPath, 'a:0'),
+  ])
+
+  const videoArgs = videoCodec && BROWSER_SAFE_VIDEO_CODECS.has(videoCodec)
+    ? ['-c:v', 'copy']
+    : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23']
+
+  const audioArgs = !audioCodec
+    ? ['-an']
+    : BROWSER_SAFE_AUDIO_CODECS.has(audioCodec)
+      ? ['-c:a', 'copy']
+      : ['-c:a', 'aac', '-b:a', '128k']
+
+  await runCommand('ffmpeg', [
+    '-y', '-i', videoPath,
+    ...videoArgs,
+    ...audioArgs,
+    '-movflags', '+faststart',
+    outPath,
+  ], ROOT)
+
+  return outPath
+}
+
+// Serializes video processing to one job at a time. The pipeline is CPU-bound
+// (Python motion detection, Go+YOLO detection) — running two concurrently on
+// the same machine doesn't parallelize useful work, it just makes both slower
+// via cache thrashing and context-switching (measured: module 6 went from
+// 68s solo to 108s when a second upload was processing at the same time).
+// A queued job's status stays 'queued' (written by the upload route) until
+// processUploadedVideo actually starts it, so the UI already reflects "still
+// waiting" correctly with no extra state needed.
+let queueTail: Promise<void> = Promise.resolve()
+
+export function enqueueProcessing(jobId: string, videoPath: string, filename: string): void {
+  queueTail = queueTail.then(() => processUploadedVideo(jobId, videoPath, filename))
+}
+
+async function processUploadedVideo(jobId: string, videoPath: string, filename: string) {
   const outDir = path.join(PIPELINE_OUT_DIR, jobId)
 
   try {
@@ -118,6 +191,14 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
       state: 'processing',
       message: 'Starting motion detection & event segmentation (Modules 1-7)...',
       percent: 0,
+    })
+
+    // Kicked off alongside the Python pipeline (not after it) — see
+    // generatePlaybackProxy's docstring. Non-fatal if it fails (e.g. ffmpeg
+    // missing): falls back to streaming the raw source, same as before.
+    const proxyPromise = generatePlaybackProxy(videoPath, outDir).catch((err) => {
+      console.error(`[playback-proxy] failed for ${jobId}:`, err?.message ?? err)
+      return null
     })
 
     const progressInterval = watchProgressFile(jobId, path.join(outDir, 'progress.json'), 0, 90)
@@ -147,6 +228,10 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
 
     writeStatus(jobId, { message: 'Finalizing results...', percent: 98 })
 
+    // By now the Python pipeline (several minutes) has almost certainly
+    // outlasted the transcode, but await it properly rather than assume.
+    const proxyPath = await proxyPromise
+
     const enrichedPath = path.join(outDir, 'backend_output', 'enriched_events.json')
     const enriched = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'))
 
@@ -154,8 +239,11 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
     // machine that ran Module 1 — not reliably resolvable as a URL. Stamp on
     // the two app-relative pointers that the heatmap/annotated/stream routes
     // and the frontend actually need to locate this specific video's assets.
+    // Prefer the transcoded playback proxy (guaranteed browser-compatible
+    // H.264/AAC MP4) over the raw source, which is frequently a codec no
+    // browser can decode (see generatePlaybackProxy).
     enriched.pipeline_dir = jobId
-    enriched.source_video_path = path.relative(ROOT, videoPath).split(path.sep).join('/')
+    enriched.source_video_path = path.relative(ROOT, proxyPath ?? videoPath).split(path.sep).join('/')
 
     fs.writeFileSync(path.join(ROOT, 'public', 'api', 'events.json'), JSON.stringify(enriched, null, 2))
     fs.writeFileSync(path.join(outDir, 'api_response.json'), JSON.stringify(enriched, null, 2))

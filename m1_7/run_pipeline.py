@@ -155,7 +155,8 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
     cmd3 = [sys.executable, str(HERE / "module3_motion_detection.py"),
             str(manifest_path), "--out", str(motion_csv),
             "--save-masks", str(masks_dir),
-            "--save-flow", str(flow_dir)]
+            "--save-flow", str(flow_dir),
+            "--motion-scale", str(args.motion_scale)]
     if args.disable_jerk:
         cmd3.append("--disable-jerk")
 
@@ -304,6 +305,11 @@ def main():
                          help="Module 3: skip the temporal spectral-residual jerk_score pass.")
     parser.add_argument("--jerk-sudden-thresh", type=float, default=0.6,
                          help="Module 7: peak_jerk_score threshold for motion_character='sudden'. Default 0.6.")
+    parser.add_argument("--motion-scale", type=float, default=1.0,
+                         help="Module 3: downscale factor for all 3 ensemble methods (default 1.0, full "
+                              "resolution). 0.5 measured ~2.5-3x faster but can shift which frames cross "
+                              "Module 7's hysteresis thresholds — validate against your own footage "
+                              "before relying on it.")
     args = parser.parse_args()
 
     try:

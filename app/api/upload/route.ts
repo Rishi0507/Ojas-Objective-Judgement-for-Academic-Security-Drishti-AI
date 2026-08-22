@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { ensureDirs, slugify, writeStatus, processUploadedVideo } from '@/lib/pipelineJobs'
+import { ensureDirs, slugify, writeStatus, enqueueProcessing } from '@/lib/pipelineJobs'
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.mov', '.avi', '.webm']
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024 // 2GB
@@ -43,10 +43,11 @@ export async function POST(req: NextRequest) {
       startedAt: new Date().toISOString(),
     })
 
-    // Fire-and-forget: the dev/production server process stays alive for the
-    // duration of the multi-minute pipeline, so this continues after the
-    // response below is sent.
-    processUploadedVideo(jobId, savedPath, file.name)
+    // Queued (not fired immediately): the pipeline is CPU-bound, so videos
+    // process one at a time. The dev/production server process stays alive
+    // for the duration of the multi-minute pipeline, so this continues
+    // after the response below is sent regardless of queue position.
+    enqueueProcessing(jobId, savedPath, file.name)
 
     return NextResponse.json({ jobId, filename: file.name }, { status: 202 })
   } catch (error: any) {
