@@ -145,7 +145,8 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
         "Module 2 — Frame Sampling",
         [sys.executable, str(HERE / "module2_frame_sampling.py"),
          str(header_path), "--out-dir", str(frames_dir),
-         "--target-fps", str(args.target_fps)],
+         "--target-fps", str(args.target_fps),
+         "--max-width", str(args.max_width)],
         logs_dir / "02_frame_sampling.log",
     )
     mark_done("module2_frame_sampling")
@@ -305,6 +306,10 @@ def main():
                          help="Module 3: skip the temporal spectral-residual jerk_score pass.")
     parser.add_argument("--jerk-sudden-thresh", type=float, default=0.6,
                          help="Module 7: peak_jerk_score threshold for motion_character='sudden'. Default 0.6.")
+    parser.add_argument("--max-width", type=int, default=640,
+                         help="Module 2: downscale sampled frames to at most this width "
+                              "(default 640). Primary speed control — Modules 3-6 all scale "
+                              "with pixel count. Pass 0 to process at source resolution.")
     parser.add_argument("--motion-scale", type=float, default=1.0,
                          help="Module 3: downscale factor for all 3 ensemble methods (default 1.0, full "
                               "resolution). 0.5 measured ~2.5-3x faster but can shift which frames cross "

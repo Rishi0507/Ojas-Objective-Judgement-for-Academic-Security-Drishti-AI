@@ -280,6 +280,7 @@ class MotionDetector:
             score=combined_score,
             mask=combined_mask,
             flow_field=flow_field,
+            flow_magnitude=flow_magnitude,
         )
 
     # ---------------- internal methods ----------------
@@ -492,12 +493,14 @@ class FrameMotionResult:
         "frame_idx", "timestamp_sec",
         "raw_diff", "raw_bg", "raw_flow",
         "norm_diff", "norm_bg", "norm_flow",
-        "score", "mask", "flow_field",
+        "score", "mask", "flow_field", "flow_magnitude",
     ]
 
     def __init__(self, **kwargs):
         for k in self.__slots__:
-            setattr(self, k, kwargs[k])
+            # flow_magnitude was added after the original slot list; tolerate
+            # callers that don't pass it rather than hard-failing.
+            setattr(self, k, kwargs.get(k))
 
     def to_dict(self, include_flow=False) -> dict:
         d = {
@@ -656,10 +659,27 @@ def run_on_manifest(
         if save_masks_dir:
             mask_path = Path(save_masks_dir) / f"mask_f{result.frame_idx:07d}.png"
             cv2.imwrite(str(mask_path), result.mask)
-        if save_flow_dir and result.flow_field is not None:
-            # Save flow as .npy (HxWx2 float32) — too big as image.
+        if save_flow_dir:
+            # Persist the flow as a magnitude map (HxW float16) rather than
+            # the raw vector field (HxWx2 float32) — 4x fewer bytes on disk.
+            #
+            # This matters more than it looks: writing the full field was
+            # measured at ~60% of Module 3's total wall time (95.7s with it
+            # vs 37.8s without, on a 640x480 573-frame clip writing 1.4GB;
+            # a 720p clip wrote 12GB). It is pure I/O — no GPU or algorithm
+            # change can recover it, only writing less data can.
+            #
+            # Nothing is lost: Module 6 is the only consumer, and it only
+            # ever reduces the field to sqrt(dx^2+dy^2) means (globally and
+            # per-ROI). float16 keeps ~3 significant digits, far more than
+            # enough for averaging pixel displacements. Module 6 accepts
+            # either layout, so pre-existing full-field flow dirs still work.
             flow_path = Path(save_flow_dir) / f"flow_f{result.frame_idx:07d}.npy"
-            np.save(str(flow_path), result.flow_field)
+            if result.flow_magnitude is not None:
+                np.save(str(flow_path), result.flow_magnitude.astype(np.float16))
+            elif result.flow_field is not None:
+                mag = np.sqrt(result.flow_field[..., 0] ** 2 + result.flow_field[..., 1] ** 2)
+                np.save(str(flow_path), mag.astype(np.float16))
 
     elapsed = time.time() - t0
 

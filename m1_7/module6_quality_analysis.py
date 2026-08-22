@@ -160,7 +160,9 @@ class CameraQualityAnalyzer:
         ----------
         frame_idx, timestamp : identity (from Module 2)
         frame_bgr : HxWx3 uint8 BGR
-        flow_field : HxWx2 float32 (from Module 3's saved .npy).
+        flow_field : Module 3's saved .npy — either an HxW magnitude map
+                     (float16, the current format) or a legacy HxWx2
+                     (dx, dy) float32 vector field. Both are accepted.
                      Pass None to skip the global-vs-local flow check.
         rois : list of ROI dicts (from Module 5). Each must have "bbox"
                as [x1,y1,x2,y2]. Used for BOTH the local-flow comparison
@@ -295,8 +297,17 @@ class CameraQualityAnalyzer:
         if flow_field is None:
             return 0.0, [], False
 
-        # Magnitude from the (dx, dy) flow field.
-        magnitude = np.sqrt(flow_field[..., 0] ** 2 + flow_field[..., 1] ** 2)
+        # Module 3 saves flow as a precomputed HxW magnitude map (float16,
+        # 4x smaller on disk — see its --save-flow branch). Older runs saved
+        # the raw HxWx2 (dx, dy) vector field, so accept both: derive the
+        # magnitude only when we were handed actual vectors.
+        if flow_field.ndim == 3:
+            magnitude = np.sqrt(
+                flow_field[..., 0].astype(np.float32) ** 2
+                + flow_field[..., 1].astype(np.float32) ** 2
+            )
+        else:
+            magnitude = flow_field.astype(np.float32)
         global_mean = float(magnitude.mean()) if magnitude.size > 0 else 0.0
 
         local_means: list[float] = []
