@@ -1,8 +1,32 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Activity, Phone, Users, TrendingUp, Filter, Download, Eye, Clock, Zap } from 'lucide-react'
+import { ArrowLeft, Activity, Phone, Users, TrendingUp, Filter, Download, Eye, Clock, Zap, Target, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+/**
+ * Feature 10.1 — investigator profiles. Labels/blurbs live here rather than
+ * being derived from the API's snake_case names, so the UI reads properly
+ * without the backend having to carry presentation strings.
+ */
+const INVESTIGATION_PROFILES: { id: string; label: string; blurb: string }[] = [
+  { id: 'none', label: 'Pipeline order', blurb: 'Events as detected, chronological' },
+  { id: 'phone_activity', label: 'Phone activity', blurb: 'Weights prohibited-item detections highest' },
+  { id: 'seat_exchange', label: 'Seat exchange', blurb: 'Weights movement, then proximity' },
+  { id: 'neighbor_interaction', label: 'Neighbour interaction', blurb: 'Weights how tightly people cluster' },
+  { id: 'camera_disturbance', label: 'Camera disturbance', blurb: 'Surfaces poorly-observed footage' },
+  { id: 'all_unusual', label: 'All unusual', blurb: 'Balanced across every signal' },
+]
+
+/** Feature 10.2 — a cluster of events linked into one story. */
+interface EvidenceGroup {
+  group_id: string
+  event_ids: string[]
+  size: number
+  span_sec: number
+  shared_track_ids: string[]
+  reasons: string[]
+}
 
 interface VideoAnalysisProps {
   videoId: string
@@ -23,6 +47,8 @@ interface EventData {
   trackId: string
   motionCharacter?: string
   jerkScore?: number
+  profileScore?: number
+  profileSignals?: Record<string, number>
 }
 
 interface VideoData {
@@ -54,6 +80,13 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
   const [activeFilter, setActiveFilter] = useState('all')
   const [videoData, setVideoData] = useState<VideoData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Features 10.1 / 10.2. The base /api/video fetch below is left exactly as
+  // it was; profile ranking and grouping come from /api/events, so the page
+  // still renders normally if that call fails.
+  const [profile, setProfile] = useState('none')
+  const [rankedEvents, setRankedEvents] = useState<EventData[] | null>(null)
+  const [groups, setGroups] = useState<EvidenceGroup[]>([])
+  const [ranking, setRanking] = useState(false)
 
   useEffect(() => {
     fetch('/api/video')
@@ -67,6 +100,38 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
         setLoading(false)
       })
   }, [])
+
+  // Evidence groups don't depend on the chosen profile, so they're fetched once.
+  useEffect(() => {
+    fetch('/api/events?groups=1')
+      .then(res => res.json())
+      .then(data => setGroups(Array.isArray(data.groups) ? data.groups : []))
+      .catch(err => console.error('Failed to load evidence groups:', err))
+  }, [])
+
+  useEffect(() => {
+    if (profile === 'none') {
+      setRankedEvents(null)
+      return
+    }
+    let cancelled = false
+    setRanking(true)
+    fetch(`/api/events?mode=${encodeURIComponent(profile)}`)
+      .then(res => res.json())
+      .then(data => {
+        // A late response from a previously-selected profile must not
+        // overwrite the current one.
+        if (cancelled) return
+        setRankedEvents(Array.isArray(data.events) ? data.events : null)
+      })
+      .catch(err => {
+        if (!cancelled) console.error('Failed to re-rank events:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setRanking(false)
+      })
+    return () => { cancelled = true }
+  }, [profile])
 
   if (loading) {
     return (
@@ -84,7 +149,10 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
     )
   }
 
-  const filteredEvents = videoData.events.filter(event => {
+  // Profile ranking replaces only the ORDER of the list; the existing type
+  // filter below is untouched and still applies on top.
+  const baseEvents = rankedEvents ?? videoData.events
+  const filteredEvents = baseEvents.filter(event => {
     if (activeFilter === 'all') return true
     if (activeFilter === 'phone' && event.type === 'phone_activity') return true
     if (activeFilter === 'proximity' && event.type === 'proximity') return true
@@ -272,10 +340,88 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
         </div>
       </div>
 
+      {groups.length > 0 && (
+        <div className="card p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Network className="w-5 h-5 text-muted-foreground" strokeWidth={2} />
+            <h2 className="text-lg font-semibold">Evidence Groups</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Events linked into a single pattern by recurring people, or by sharing a
+            region close together in time.
+          </p>
+          <div className="space-y-3">
+            {groups.map((g) => (
+              <div key={g.group_id} className="p-4 rounded-lg border border-border bg-muted/30">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="font-mono font-bold">{g.group_id}</span>
+                  <span className="px-2 py-0.5 bg-primary text-primary-foreground rounded text-xs font-bold">
+                    {g.size} linked events
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    spans {g.span_sec.toFixed(1)}s
+                  </span>
+                  {g.shared_track_ids.map((t) => (
+                    <span key={t} className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{t}</span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {g.event_ids.map((id) => (
+                    <button
+                      key={id}
+                      onClick={() => onEventSelect(id)}
+                      className="px-2 py-1 rounded border border-border bg-background hover:bg-accent transition-colors text-xs font-mono"
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {g.reasons.join(' · ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Target className="w-5 h-5 text-muted-foreground" strokeWidth={2} />
+          <h2 className="text-lg font-semibold">Investigation Focus</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Re-rank the same events for what you are actually looking for. Nothing is
+          re-analysed — only the weighting of existing signals changes.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {INVESTIGATION_PROFILES.map((prof) => (
+            <button
+              key={prof.id}
+              onClick={() => setProfile(prof.id)}
+              title={prof.blurb}
+              className={cn(
+                'px-3 py-2 rounded-lg border text-sm transition-colors text-left',
+                profile === prof.id
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'card card-hover'
+              )}
+            >
+              {prof.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="card p-6">
         <h2 className="text-lg font-semibold mb-4">
           Detected Segments
           {activeFilter !== 'all' && <span className="text-muted-foreground ml-2 text-sm">({filteredEvents.length} filtered)</span>}
+          {profile !== 'none' && (
+            <span className="text-muted-foreground ml-2 text-sm font-normal">
+              {ranking ? '· re-ranking…' : `· ranked by ${INVESTIGATION_PROFILES.find(p => p.id === profile)?.label}`}
+            </span>
+          )}
         </h2>
         <div className="space-y-3">
           {filteredEvents.map((event) => (
@@ -299,6 +445,21 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
                       {event.priority.toUpperCase()}
                     </span>
                     <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{event.trackId}</span>
+                    {event.profileScore !== undefined && (
+                      <span
+                        className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary border border-primary/30 rounded text-xs font-bold font-mono"
+                        title={
+                          event.profileSignals
+                            ? Object.entries(event.profileSignals)
+                                .map(([k, v]) => `${k}: ${Number(v).toFixed(2)}`)
+                                .join(String.fromCharCode(10))
+                            : undefined
+                        }
+                      >
+                        <Target className="w-3 h-3" strokeWidth={2.5} />
+                        {event.profileScore.toFixed(2)}
+                      </span>
+                    )}
                     {event.motionCharacter === 'sudden' && (
                       <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-xs font-bold">
                         <Zap className="w-3 h-3" strokeWidth={2.5} />

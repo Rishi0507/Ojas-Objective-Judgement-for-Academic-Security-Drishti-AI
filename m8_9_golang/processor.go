@@ -1248,6 +1248,8 @@ func buildAPIResponse(header *Header, enrichedEvents []EnrichedEvent, eventsData
 			ObjectScore:     computeObjectScore(ev.Offences),
 			PersonProximity: computePersonProximity(ev.PersonTracks),
 		}
+		apiEvent.UncertaintyReasons = buildUncertaintyReasons(ev)
+		apiEvent.Explanations = buildExplanations(apiEvent, ev)
 		apiEvents = append(apiEvents, apiEvent)
 	}
 
@@ -1339,4 +1341,126 @@ func buildEvidence(ev EnrichedEvent) []string {
 	}
 
 	return evidence
+}
+
+
+// ---------------------------------------------------------------------------
+// Feature 10.3 — camera-aware uncertainty
+// ---------------------------------------------------------------------------
+
+// uncertaintyBand converts a 0-1 quality signal into the band an investigator
+// reads. Thresholds are the agreed ones: >0.6 high, 0.3-0.6 medium, <0.3 low.
+func uncertaintyBand(v float64) string {
+	switch {
+	case v > 0.6:
+		return "high"
+	case v >= 0.3:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+// buildUncertaintyReasons re-presents signals that already exist on the event;
+// it measures nothing new.
+//
+// lighting_change reuses the same (1 - observability) proxy that
+// QualityFactors.Lighting already reports, so the label can never disagree
+// with the number rendered beside it. blur and occlusion are reported as
+// "unavailable" because Module 6 does not currently feed them through — see
+// UncertaintyReasons' doc comment.
+func buildUncertaintyReasons(ev EnrichedEvent) UncertaintyReasons {
+	return UncertaintyReasons{
+		CameraShake:    uncertaintyBand(ev.CameraMotionPct),
+		Blur:           "unavailable",
+		LightingChange: uncertaintyBand(1.0 - ev.MeanQObservability),
+		Occlusion:      "unavailable",
+	}
+}
+
+// dominantUncertainty names the single worst *measured* factor, for use as an
+// explanation's one-line caveat. Unavailable factors are skipped rather than
+// competing as if they scored zero.
+func dominantUncertainty(u UncertaintyReasons) string {
+	rank := map[string]int{"low": 0, "medium": 1, "high": 2}
+	best, bestRank := "", -1
+	for _, f := range []struct{ name, band string }{
+		{"camera_shake", u.CameraShake},
+		{"lighting_change", u.LightingChange},
+		{"blur", u.Blur},
+		{"occlusion", u.Occlusion},
+	} {
+		r, ok := rank[f.band]
+		if !ok {
+			continue // "unavailable"
+		}
+		if r > bestRank {
+			best, bestRank = fmt.Sprintf("%s: %s", f.name, f.band), r
+		}
+	}
+	if best == "" {
+		return "unavailable"
+	}
+	return best
+}
+
+// ---------------------------------------------------------------------------
+// Feature 10.6 — grounded explanations
+// ---------------------------------------------------------------------------
+
+// frameURL points at the annotated still for a frame. The route falls back to
+// the raw sampled frame when no annotated version exists, so the link is valid
+// whether or not that frame carried a detection.
+func frameURL(frameIdx int) string {
+	return fmt.Sprintf("/api/annotated?frame=%d", frameIdx)
+}
+
+// buildExplanations emits one grounded explanation per claim the API makes
+// about an event (feature 10.6).
+//
+// Every offence becomes an explanation carrying the frame, ROI, object box and
+// track it was derived from, so nothing shown to an investigator is a floating
+// assertion. A final entry covers the event-level motion claim, which is
+// otherwise stated only as free text in Evidence.
+func buildExplanations(api APIEvent, ev EnrichedEvent) []Explanation {
+	explanations := make([]Explanation, 0, len(ev.Offences)+1)
+	caveat := dominantUncertainty(api.UncertaintyReasons)
+
+	for _, off := range ev.Offences {
+		urls := []string{frameURL(off.FrameIdx)}
+		if off.Snapshot != "" {
+			urls = append(urls, "/api/snapshot?path="+filepath.ToSlash(off.Snapshot))
+		}
+		explanations = append(explanations, Explanation{
+			EventID:             api.ID,
+			Claim:               off.Label,
+			Timestamp:           off.StartSec,
+			TrackID:             off.TrackID,
+			ROI:                 ev.ROI,
+			ObjectBBox:          off.BBox,
+			SupportingFrameURLs: urls,
+			UncertaintyReason:   caveat,
+		})
+	}
+
+	// Event-level motion claim, grounded on the frame where the event starts.
+	explanations = append(explanations, Explanation{
+		EventID: api.ID,
+		Claim: fmt.Sprintf("Motion peaked at %.2f over %d analysed frames (%s onset)",
+			ev.PeakSFinal, ev.FrameCount, motionCharacterOrUnknown(ev.MotionCharacter)),
+		Timestamp:           ev.Start,
+		TrackID:             api.TrackID,
+		ROI:                 ev.ROI,
+		SupportingFrameURLs: []string{frameURL(ev.StartFrameIdx)},
+		UncertaintyReason:   caveat,
+	})
+
+	return explanations
+}
+
+func motionCharacterOrUnknown(mc string) string {
+	if mc == "" {
+		return "unclassified"
+	}
+	return mc
 }
