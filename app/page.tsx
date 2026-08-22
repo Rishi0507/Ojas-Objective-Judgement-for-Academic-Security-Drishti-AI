@@ -28,13 +28,6 @@ export default function Home() {
     return (
       <div className="relative min-h-screen">
         <Hero onLaunch={() => setShowHero(false)} />
-        <button
-          onClick={() => setShowHero(false)}
-          className="fixed bottom-8 right-8 z-50 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-semibold shadow-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
-        >
-          Skip to Dashboard
-          <X className="w-5 h-5" />
-        </button>
       </div>
     )
   }
