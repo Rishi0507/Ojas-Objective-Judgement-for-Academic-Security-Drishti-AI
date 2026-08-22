@@ -84,18 +84,22 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 				analyseMicroMotions(enrichedEvent.PersonTracks, eventPoses)...)
 		}
 
-		// Ensure every offence has a snapshot, falling back to the raw frame
-		// if an annotated still wasn't explicitly generated.
+		// Give every offence a still. Only prohibited-object findings write a
+		// purpose-built snapshot during detection, so behavioural ones
+		// (head turns, gestures, reaches) would otherwise reach the UI with
+		// nothing to show. Re-running the annotator just for those would cost
+		// another full inference pass, and the images needed are already on
+		// disk, so this only picks the best one that exists.
 		for i := range enrichedEvent.Offences {
-			if enrichedEvent.Offences[i].Snapshot == "" {
-				fIdx := enrichedEvent.Offences[i].FrameIdx
-				if fIdx == 0 {
-					fIdx = event.StartFrameIdx
-				}
-				rawFramePath := filepath.Join(framesDir, fmt.Sprintf("frame_%07d.jpg", fIdx))
-				if _, err := os.Stat(rawFramePath); err == nil {
-					enrichedEvent.Offences[i].Snapshot = filepath.ToSlash(rawFramePath)
-				}
+			if enrichedEvent.Offences[i].Snapshot != "" {
+				continue
+			}
+			fIdx := enrichedEvent.Offences[i].FrameIdx
+			if fIdx == 0 {
+				fIdx = event.StartFrameIdx
+			}
+			if shot := findEvidenceFrame(outDir, framesDir, header.VideoID, fIdx); shot != "" {
+				enrichedEvent.Offences[i].Snapshot = shot
 			}
 		}
 
@@ -759,7 +763,7 @@ func classifyOffences(event Event, ev EnrichedEvent, outDir string, posesByTrack
 	for i := range offences {
 		shot := filepath.Join(snapshotDir, fmt.Sprintf("event%d_f%07d.jpg", event.EventID, offences[i].FrameIdx))
 		if _, err := os.Stat(shot); err == nil {
-			offences[i].Snapshot = shot
+			offences[i].Snapshot = filepath.ToSlash(shot)
 		}
 	}
 
@@ -812,6 +816,33 @@ func computePersonProximity(tracks []PersonTrack) float64 {
 		}
 	}
 	return math.Round(best*1000) / 1000
+}
+
+// findEvidenceFrame returns the best still already on disk for a frame index,
+// as an app-relative path, or "" if nothing exists.
+//
+// Prefers the annotated frame, which carries the person and prohibited-item
+// boxes drawn during detection, over the raw sampled frame — for something
+// like "reached toward Track-30" a bare image leaves the investigator to guess
+// which person the system meant.
+//
+// Sampled frames are named "<videoID>__f<7 digits>__t<timestamp>.jpg", so the
+// timestamp has to be globbed rather than constructed. Assuming a simpler name
+// is a recurring failure here: detectObjects looked for "frame_%05d.jpg" and
+// consequently never ran at all, and the first version of this fallback looked
+// for "frame_%07d.jpg" and silently matched nothing.
+func findEvidenceFrame(outDir, framesDir, videoID string, frameIdx int) string {
+	annotated := filepath.Join(outDir, "annotated", fmt.Sprintf("annotated_frame_%07d.jpg", frameIdx))
+	if _, err := os.Stat(annotated); err == nil {
+		return filepath.ToSlash(annotated)
+	}
+
+	pattern := filepath.Join(framesDir, fmt.Sprintf("%s__f%07d__t*.jpg", videoID, frameIdx))
+	if matches, err := filepath.Glob(pattern); err == nil && len(matches) > 0 {
+		return filepath.ToSlash(matches[0])
+	}
+
+	return ""
 }
 
 // collectSnapshots returns the distinct evidence stills across an event's
