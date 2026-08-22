@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react'
 import { Search, Bell, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function Header() {
+interface HeaderProps {
+  onNotificationClick?: (eventId: string) => void
+}
+
+export default function Header({ onNotificationClick }: HeaderProps) {
   const [showNotifications, setShowNotifications] = useState(false)
   const [unreviewedEvents, setUnreviewedEvents] = useState<any[]>([])
 
@@ -72,7 +76,16 @@ export default function Header() {
                   {unreviewedEvents.length > 0 ? (
                     <div className="max-h-[300px] overflow-y-auto">
                       {unreviewedEvents.map((ev, i) => (
-                        <div key={ev.id || i} className="p-4 border-b border-border hover:bg-accent/50 transition-colors cursor-pointer">
+                        <div 
+                          key={ev.id || i} 
+                          className="p-4 border-b border-border hover:bg-accent/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (ev.id && onNotificationClick) {
+                              onNotificationClick(ev.id)
+                              setShowNotifications(false)
+                            }
+                          }}
+                        >
                           <div className="flex items-start justify-between mb-1">
                             <span className="font-medium text-sm text-red-600">{ev.primary_label || 'Offence Detected'}</span>
                             <span className="text-xs text-muted-foreground">
