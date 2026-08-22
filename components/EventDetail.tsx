@@ -430,7 +430,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                 />
                 <div className="flex justify-between text-xs text-muted-foreground font-mono">
                   <span>{formatTime(eventData.start)}</span>
-                  <span className="text-foreground font-semibold">Current: {formatTime(currentTime)}</span>
+                  <span className="text-foreground font-semibold">{formatTime(currentTime)}</span>
                   <span>{formatTime(eventData.end)}</span>
                 </div>
               </div>
