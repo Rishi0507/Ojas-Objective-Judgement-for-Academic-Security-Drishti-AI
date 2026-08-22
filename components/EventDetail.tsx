@@ -193,8 +193,13 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
 
   const getSeekPosition = () => {
     if (!eventData || !eventData.duration) return 0
-    return ((currentTime - eventData.start) / eventData.duration) * 100
+    // Use floored seconds so the dot jumps once per second, not smoothly
+    const displayTime = Math.floor(currentTime)
+    return ((displayTime - eventData.start) / eventData.duration) * 100
   }
+
+  // Integer-second time for display — updates once per second
+  const displayTime = Math.floor(currentTime)
 
   /** Seeks the player to an absolute time in the source recording. */
   const jumpTo = (absoluteSec: number) => {
@@ -432,7 +437,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   }}
                 />
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-foreground font-semibold tabular-nums">{formatTime(currentTime)}</span>
+                  <span className="text-foreground font-semibold tabular-nums">{formatTime(displayTime)}</span>
                   <span className="text-muted-foreground">{formatTime(eventData.end)}</span>
                 </div>
               </div>
