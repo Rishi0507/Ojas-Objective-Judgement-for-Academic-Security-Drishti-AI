@@ -40,7 +40,13 @@ export default function Home() {
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+        <Header 
+          onNotificationClick={(eventId) => {
+            setSelectedEvent(eventId)
+            setEventOrigin('events')
+            setActiveView('event')
+          }}
+        />
 
         {job && (job.state === 'queued' || job.state === 'processing') && (
           <div className="px-6 py-3 bg-primary/5 border-b border-primary/20 flex items-center gap-3 flex-shrink-0">
