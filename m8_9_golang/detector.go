@@ -152,6 +152,12 @@ type Track struct {
 	Hits         int
 	TimeSinceSeen int
 	IsActive     bool
+	// Wall-clock position in the video when this track was last matched.
+	// Needed because the tracker now spans a whole video: detection only
+	// runs inside event windows, so consecutive Update() calls can be
+	// separated by long stretches of unprocessed footage, and "how many
+	// updates ago" is no longer a usable proxy for "how long ago".
+	LastSeenSec float64
 }
 
 // NewByteTracker creates a new tracker
@@ -200,9 +206,12 @@ func (bt *ByteTracker) Update(detections []Detection) []*Track {
 		}
 		
 		if bestIdx >= 0 {
-			// Update track
+			// Update track. Only the most recent detection is retained —
+			// callers read the current position, and accumulating every
+			// past detection grew without bound and let callers re-emit
+			// the whole history on every frame.
 			track.LastBBox = personDetections[bestIdx].BBox
-			track.Detections = append(track.Detections, personDetections[bestIdx])
+			track.Detections = []Detection{personDetections[bestIdx]}
 			track.Hits++
 			track.TimeSinceSeen = 0
 			matched[bestIdx] = true
@@ -242,6 +251,23 @@ func (bt *ByteTracker) Update(detections []Detection) []*Track {
 	}
 	
 	return activeTracks
+}
+
+// ExpireBefore retires tracks last seen earlier than cutoffSec.
+//
+// One tracker now spans an entire video so that IDs identify a person rather
+// than "whoever was detected first in this event". The trade-off is that
+// between two events lies footage nobody looked at, and a track left alive
+// across that gap will happily match, by position alone, whoever is standing
+// there when detection resumes. Past a modest gap that inference is not
+// credible, so those tracks are retired and the next person to appear there
+// gets a fresh identity instead of inheriting someone else's history.
+func (bt *ByteTracker) ExpireBefore(cutoffSec float64) {
+	for _, track := range bt.tracks {
+		if track.IsActive && track.LastSeenSec < cutoffSec {
+			track.IsActive = false
+		}
+	}
 }
 
 // GetActiveTracks returns currently active tracks
