@@ -223,7 +223,8 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          "--flow-dir", str(flow_dir),
          "--rois-json", str(rois_json),
          "--motion-csv", str(motion_csv),
-         "--out", str(quality_csv)],
+         "--out", str(quality_csv),
+         "--shake-stride", str(args.shake_stride)],
         logs_dir / "06_quality_analysis.log",
     )
     mark_done("module6_quality_analysis")
@@ -358,11 +359,15 @@ def main():
                          help="Module 2: downscale sampled frames to at most this width "
                               "(default 640). Primary speed control — Modules 3-6 all scale "
                               "with pixel count. Pass 0 to process at source resolution.")
-    parser.add_argument("--motion-scale", type=float, default=1.0,
-                         help="Module 3: downscale factor for all 3 ensemble methods (default 1.0, full "
-                              "resolution). 0.5 measured ~2.5-3x faster but can shift which frames cross "
-                              "Module 7's hysteresis thresholds — validate against your own footage "
-                              "before relying on it.")
+    parser.add_argument("--motion-scale", type=float, default=0.85,
+                         help="Module 3: downscale factor for the ensemble methods. Default 0.85, "
+                              "measured to leave event boundaries and peaks unchanged while cutting "
+                              "Module 3 by 17%%. 0.7 is 38-39%% faster with event count preserved on "
+                              "both clips tested, at the cost of a 3s truncation on one.")
+    parser.add_argument("--shake-stride", type=int, default=3,
+                         help="Module 6: compute the ORB/RANSAC camera-shake estimate every Nth frame. "
+                              "Default 3, measured to leave events and camera-motion flags unchanged "
+                              "while halving Module 6. 5 and above start truncating events.")
     args = parser.parse_args()
 
     try:

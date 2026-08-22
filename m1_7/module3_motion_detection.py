@@ -792,12 +792,18 @@ def main():
                         help="Upper percentile for normalization (default 95.0)")
     parser.add_argument("--disable-jerk", action="store_true",
                         help="Skip the temporal spectral-residual jerk_score pass (default: enabled).")
-    parser.add_argument("--motion-scale", type=float, default=1.0,
-                        help="Downscale factor for all 3 ensemble methods, e.g. 0.5 = half resolution "
-                             "(default 1.0, full resolution). Measured ~2.5-3x faster Module 3 at 0.5, "
-                             "but can shift which frames cross Module 7's hysteresis thresholds — in one "
-                             "test this changed detected event count from 4 to 1. Opt in deliberately, "
-                             "validate against your own footage before trusting it as default.")
+    parser.add_argument("--motion-scale", type=float, default=0.85,
+                        help="Downscale factor for the 3 ensemble methods, e.g. 0.7 = 70%% resolution. "
+                             "Default 0.85, chosen by measurement: on the exam-hall clip it left "
+                             "event boundaries and peak scores identical (0.594 vs 0.593) while "
+                             "cutting Module 3 by 17%%. "
+                             "0.7 is the better speed trade if you accept a small recall risk - "
+                             "measured 38-39%% faster on two clips with event COUNT preserved on "
+                             "both, but one clip's first event ended 3s early (36.50 -> 33.50), so "
+                             "an offence in that tail would be missed. "
+                             "0.5 cut 61%% and truncated an event by 2.8s. "
+                             "Module 3 is the largest stage, so this is the single biggest "
+                             "resolution lever in the pipeline.")
     args = parser.parse_args()
 
     total = args.w_diff + args.w_bg + args.w_flow
