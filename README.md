@@ -4,7 +4,7 @@
 
 A complete video surveillance and exam monitoring system with motion detection, person tracking, object detection, and quality analysis.
 
-## 🎯 Overview
+## Overview
 
 DrishtiAI is a comprehensive video analytics pipeline consisting of:
 
@@ -12,7 +12,7 @@ DrishtiAI is a comprehensive video analytics pipeline consisting of:
 2. **Golang Modules 8-9** (`m8_9_golang/`): Person detection & tracking, object detection (phone, paper)
 3. **Next.js Frontend**: Clean, professional dashboard for video analysis and event review
 
-## 🏗 Architecture
+## Architecture
 
 ```
 Raw Video (MP4)
@@ -46,7 +46,7 @@ Raw Video (MP4)
 └─────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Run Python Pipeline (Modules 1-7)
 
@@ -94,7 +94,7 @@ npm run dev
 # Open http://localhost:3000
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 drishti-video-analytics/
@@ -132,7 +132,7 @@ drishti-video-analytics/
 └── PROJECT_STRUCTURE.md           # Complete documentation
 ```
 
-## 🎨 Frontend Features
+## Frontend Features
 
 - **Clean Professional Design**: Neutral theme (light gray background, white cards)
 - **Video Dashboard**: Overview of all processed videos with status indicators
@@ -144,7 +144,7 @@ drishti-video-analytics/
 - **Event Detail View**: Frame-by-frame playback with ROI overlay
 - **Feedback System**: Investigator can mark events as relevant/false-positive
 
-## 🔧 Backend Features
+## Backend Features
 
 ### Module 8: Person Detection & Tracking
 - **YOLO-based detection**: YOLOv8n/s for real-time person detection
@@ -158,14 +158,15 @@ drishti-video-analytics/
 - **Object-person linking**: Associates objects with person tracks
 - **Confidence filtering**: Configurable threshold (default 0.5)
 
-## 📖 Documentation
+## Documentation
 
 - **[docs/PROJECT_STRUCTURE.md](./docs/PROJECT_STRUCTURE.md)**: Frontend architecture, API contract, design system
+- **[docs/RESEARCH.md](./docs/RESEARCH.md)**: Research on Pretrained Models and Classical Algorithms for Video Analytics
 - **[m8_9_golang/README.md](./m8_9_golang/README.md)**: Golang backend full documentation
 - **[m8_9_golang/QUICKSTART.md](./m8_9_golang/QUICKSTART.md)**: 5-minute setup guide
 - **Python modules**: See inline docstrings in `m1_7/*.py`
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Python Pipeline
 - OpenCV: Video processing, motion detection
@@ -184,7 +185,7 @@ drishti-video-analytics/
 - Recharts: Data visualization
 - Framer Motion: Animations
 
-## 🚀 Deployment
+## Deployment
 
 ### Frontend
 ```bash
@@ -207,7 +208,7 @@ python m1_7/run_pipeline.py video1.mp4 --out-dir output/video1
 python m1_7/run_pipeline.py video2.mp4 --out-dir output/video2
 ```
 
-## 🔒 Privacy & Security
+## Privacy & Security
 
 - **No facial recognition**: Person tracking uses centroid-based matching only
 - **Anonymized IDs**: Track IDs are ephemeral and reset per video
