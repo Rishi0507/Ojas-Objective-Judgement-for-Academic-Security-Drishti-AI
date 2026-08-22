@@ -215,6 +215,42 @@ type APIEvent struct {
 	ObjectClasses   []string `json:"objectClasses"`   // prohibited item types present
 	ObjectScore     float64  `json:"objectScore"`     // 0-1, strongest prohibited-item detection
 	PersonProximity float64  `json:"personProximity"` // 0-1, how closely people cluster
+
+	// Feature 10.3 — camera-aware uncertainty, surfaced as readable labels
+	// rather than raw floats. Purely a presentation of QualityFactors above;
+	// no new measurement is performed.
+	UncertaintyReasons UncertaintyReasons `json:"uncertaintyReasons"`
+
+	// Feature 10.6 — one grounded, traceable explanation per claim made about
+	// this event. Every entry points at the frames and boxes it rests on.
+	Explanations []Explanation `json:"explanations"`
+}
+
+// UncertaintyReasons renders Module 6's continuous quality signals as
+// "high"/"medium"/"low" bands (feature 10.3).
+//
+// Fields Module 6 does not currently produce read "unavailable" rather than
+// "low": QualityFactors hard-codes blur and occlusion to 0.0, and reporting
+// that as "low blur" would assert a measurement that was never taken.
+type UncertaintyReasons struct {
+	CameraShake    string `json:"camera_shake"`
+	Blur           string `json:"blur"`
+	LightingChange string `json:"lighting_change"`
+	Occlusion      string `json:"occlusion"`
+}
+
+// Explanation is one claim shown to an investigator, bound to the evidence it
+// was derived from (feature 10.6). Nothing is emitted that cannot name the
+// frame, box or track it came from.
+type Explanation struct {
+	EventID             string   `json:"event_id"`
+	Claim               string   `json:"claim"`
+	Timestamp           float64  `json:"timestamp"`
+	TrackID             string   `json:"track_id,omitempty"`
+	ROI                 []int    `json:"roi"`
+	ObjectBBox          []int    `json:"object_bbox,omitempty"`
+	SupportingFrameURLs []string `json:"supporting_frame_urls"`
+	UncertaintyReason   string   `json:"uncertainty_reason"`
 }
 
 type DetectionInfo struct {

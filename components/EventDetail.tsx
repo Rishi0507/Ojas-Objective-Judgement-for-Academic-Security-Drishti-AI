@@ -1,8 +1,31 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera } from 'lucide-react'
+import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera, Gauge, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+/**
+ * Colour for an uncertainty band. "unavailable" is deliberately styled as
+ * neutral rather than green: Module 6 never measured that factor, and showing
+ * it as if it scored well would overstate what the pipeline knows.
+ */
+const BAND_STYLES: Record<string, string> = {
+  high: 'bg-red-50 text-red-700 border-red-200',
+  medium: 'bg-amber-50 text-amber-700 border-amber-200',
+  low: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  unavailable: 'bg-muted text-muted-foreground border-border',
+}
+
+function bandStyle(band: string): string {
+  return BAND_STYLES[band] ?? BAND_STYLES.unavailable
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .split('_')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ')
+}
 
 interface EventDetailProps {
   eventId: string
@@ -43,6 +66,28 @@ interface EventData {
   jerkScore?: number
   offences?: OffenceData[]
   snapshots?: string[]
+  uncertaintyReasons?: UncertaintyReasons
+  explanations?: ExplanationData[]
+}
+
+/** Feature 10.3 — Module 6's quality signals as readable bands. */
+interface UncertaintyReasons {
+  camera_shake: string
+  blur: string
+  lighting_change: string
+  occlusion: string
+}
+
+/** Feature 10.6 — one claim bound to the evidence it rests on. */
+interface ExplanationData {
+  event_id: string
+  claim: string
+  timestamp: number
+  track_id?: string
+  roi: number[]
+  object_bbox?: number[]
+  supporting_frame_urls: string[]
+  uncertainty_reason: string
 }
 
 interface OffenceData {
@@ -164,7 +209,12 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
 
     video.addEventListener('timeupdate', handleTimeUpdate)
     return () => video.removeEventListener('timeupdate', handleTimeUpdate)
-  }, [eventData, videoFps, usingEventClip, clipOffset])
+    // activeSrc MUST stay in this list: the <video> carries key={activeSrc},
+    // so switching between the plain and annotated clip unmounts the element
+    // and mounts a fresh one. Without re-running, this listener stays bound to
+    // the destroyed node and the time readout, scrubber and frame index all
+    // freeze the moment the user toggles bounding boxes.
+  }, [eventData, videoFps, usingEventClip, clipOffset, activeSrc])
 
   const handlePlayPause = () => {
     if (!videoRef.current || !eventData) return
@@ -519,6 +569,53 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   </div>
                 </div>
 
+                {!!eventData.explanations?.length && (
+                  <div className="card p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Link2 className="w-4 h-4 text-muted-foreground" strokeWidth={2} />
+                      <div className="text-sm font-semibold">Grounded Explanations</div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Every claim below links to the frames and boxes it was derived from.
+                    </p>
+                    <div className="space-y-3">
+                      {eventData.explanations.map((ex, i) => (
+                        <div key={i} className="p-3 rounded-lg border border-border bg-muted/30">
+                          <div className="text-sm font-medium mb-2">{ex.claim}</div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground font-mono">
+                            <span>t={formatTime(ex.timestamp)}</span>
+                            {ex.track_id && <span>track={ex.track_id}</span>}
+                            <span>roi=[{ex.roi.join(', ')}]</span>
+                            {ex.object_bbox && <span>bbox=[{ex.object_bbox.join(', ')}]</span>}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {ex.supporting_frame_urls.map((url, j) => (
+                              <a
+                                key={j}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-background hover:bg-accent transition-colors text-xs"
+                              >
+                                <Camera className="w-3 h-3" strokeWidth={2} />
+                                Evidence {j + 1}
+                              </a>
+                            ))}
+                            <span
+                              className={cn(
+                                'px-2 py-1 rounded border text-xs font-medium',
+                                bandStyle(ex.uncertainty_reason.split(': ')[1] ?? 'unavailable')
+                              )}
+                            >
+                              {ex.uncertainty_reason}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
@@ -576,6 +673,36 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
           </div>
 
           </div>
+
+          {eventData.uncertaintyReasons && (
+            <div className="card p-6">
+              <div className="flex items-center gap-2 mb-1">
+                <Gauge className="w-4 h-4 text-muted-foreground" strokeWidth={2} />
+                <h2 className="text-lg font-semibold">Uncertainty</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                How much to trust this reading, per camera factor.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(eventData.uncertaintyReasons).map(([key, band]) => (
+                  <span
+                    key={key}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md border text-xs font-medium',
+                      bandStyle(band)
+                    )}
+                    title={
+                      band === 'unavailable'
+                        ? `${humanizeKey(key)} is not measured by the current pipeline`
+                        : `${humanizeKey(key)}: ${band}`
+                    }
+                  >
+                    {humanizeKey(key)}: {band}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="card p-6">
             <h2 className="text-lg font-semibold mb-4">Investigator Feedback</h2>
