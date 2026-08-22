@@ -4,6 +4,8 @@ import path from 'path'
 import { ensureDirs, slugify, writeStatus, enqueueProcessing } from '@/lib/pipelineJobs'
 import { createClient } from '@/lib/supabase/server'
 import { createVideoRow } from '@/lib/supabase/sync'
+import { appendEntry } from '@/lib/ledger/store'
+import { sha256File } from '@/lib/ledger/hash'
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.mov', '.avi', '.webm']
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024 // 2GB
@@ -59,6 +61,24 @@ export async function POST(req: NextRequest) {
     })
 
     await createVideoRow(jobId, ownerId, file.name)
+
+    // Custody chain, entry one: the file as it arrived, hashed before any
+    // processing touches it. Hashing after transcoding would attest to our
+    // own re-encode rather than to what was uploaded, and the two differ
+    // byte-for-byte even when they look identical.
+    const sourceHash = await sha256File(savedPath)
+    await appendEntry({
+      kind: 'video_uploaded',
+      subject: savedName,
+      jobId,
+      actorId: ownerId || null,
+      payloadHash: sourceHash,
+      payload: {
+        filename: file.name,
+        sizeBytes: file.size,
+        extension: ext,
+      },
+    })
 
     // Queued (not fired immediately): the pipeline is CPU-bound, so videos
     // process one at a time. The dev/production server process stays alive

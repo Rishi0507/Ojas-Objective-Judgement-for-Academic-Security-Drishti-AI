@@ -15,6 +15,18 @@ interface OffenceData {
   durationSec?: number
   count?: number
   snapshot?: string
+  /** CLIP's second opinion on the crop. Advisory - see clip_verify.py. */
+  clip?: {
+    verdict: 'supported' | 'contradicted' | 'unjudgeable'
+    topLabel?: string
+    topScore?: number
+    margin?: number
+    reason?: string
+  }
+  /** Set by clip_verify.py --filter when CLIP contradicted the finding. */
+  suppressed?: boolean
+  suppressedBy?: string
+  suppressedReason?: string
 }
 
 interface SegmentData {
@@ -66,6 +78,44 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.padStart(4, '0')}`
 }
 
+/**
+ * CLIP's second opinion, rendered as a badge.
+ *
+ * Deliberately not shown for "supported": a green tick on most of the list
+ * would read as corroboration the model cannot give. What is worth a
+ * reviewer's attention is the two cases where CLIP disagrees with the
+ * geometry, or where it had no view at all - a small subject the model
+ * genuinely cannot resolve is different from one it examined and cleared.
+ */
+function ClipBadge({ offence }: { offence: OffenceData }) {
+  const clip = offence.clip
+  if (!clip) return null
+
+  if (offence.suppressed || clip.verdict === 'contradicted') {
+    return (
+      <span
+        title={offence.suppressedReason ?? clip.topLabel ?? 'CLIP contradicted this finding'}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono border bg-amber-500/10 text-amber-600 border-amber-500/30"
+      >
+        CLIP disagrees
+      </span>
+    )
+  }
+
+  if (clip.verdict === 'unjudgeable') {
+    return (
+      <span
+        title={clip.reason ?? 'CLIP could not resolve this crop'}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono border bg-muted text-muted-foreground border-border"
+      >
+        CLIP unsure
+      </span>
+    )
+  }
+
+  return null
+}
+
 type SortKey = 'time' | 'confidence' | 'type'
 type Verdict = 'dismissed' | 'confirmed'
 
@@ -80,26 +130,26 @@ function getGroundedExplanation(type: string, label: string, trackId?: string, c
   switch (type) {
     case 'prohibited_object':
       return {
-        observation: `${person} was detected interacting with an unauthorized object (paper/chit/device) on or near the desk surface.`,
-        reasoning: `Optical flow and spatial object tracking identified a non-standard item held for >3s during active testing.`,
+        observation: `A prohibited object was detected near ${person} - a phone or a paper/chit.`,
+        reasoning: `YOLO detected the object above the 0.35 confidence floor, inside or overlapping this person's box. Overlay artefacts near the frame edges are rejected, and there is no minimum hold time - a single confident frame is enough to flag it.`,
         recommendation: `Inspect physical desk area around ${person} and verify timestamped snapshot evidence.`,
       }
     case 'head_turn':
       return {
-        observation: `${person} performed a lateral head rotation exceeding allowed vision angle limits (>60°).`,
-        reasoning: `Pose estimation vectors indicated head direction divergence away from the exam paper toward adjacent desks.`,
+        observation: `${person} turned their head away from the direction they normally hold it.`,
+        reasoning: `Head yaw is estimated from the offsets between nose, eyes and ears, then compared against this person's OWN median yaw across the video rather than a fixed angle - people sit at an angle, so absolute orientation is not evidence of anything. Flagged past 0.35 deviation on a scale of -1 to 1. This is not a measured degree value.`,
         recommendation: `Cross-reference seating chart to verify if ${person} was attempting to view neighbor answer sheets.`,
       }
     case 'object_exchange':
       return {
         observation: `Physical proximity interaction detected between ${person} and adjacent track area.`,
-        reasoning: `Hand trajectory convergence and spatial overlap detected between two examinees, consistent with passing materials.`,
+        reasoning: `Two tracked people's wrist keypoints came within reaching distance of each other, scaled to their torso length so distance in pixels is not confused with distance in the room.`,
         recommendation: `Review video clip around timestamp to confirm whether unauthorized item exchange took place.`,
       }
     case 'hand_gesture':
       return {
         observation: `Repeated non-standard hand gesture or signaling motion detected for ${person}.`,
-        reasoning: `High-frequency wrist/finger motion vectors outside normal writing patterns, indicating non-verbal communication.`,
+        reasoning: `A wrist keypoint rose above the shoulder line - the posture of signalling rather than writing. It cannot distinguish signalling from stretching or a hand resting against the head, which is the failure CLIP is used to catch.`,
         recommendation: `Check if signaling corresponds with head movement or gaze redirection from surrounding examinees.`,
       }
     case 'loitering':
@@ -127,6 +177,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   const [query, setQuery] = useState('')
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({})
   const [showDismissed, setShowDismissed] = useState(false)
+  const [showSuppressed, setShowSuppressed] = useState(false)
   const [selected, setSelected] = useState<OffenceRow | null>(null)
 
   useEffect(() => {
@@ -162,7 +213,9 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     }).catch((err) => console.error('Failed to save verdict:', err))
   }
 
-  const allRows: OffenceRow[] = useMemo(() => {
+  // Every finding, including ones CLIP suppressed. Kept whole so the counts
+  // below can state how many were hidden rather than quietly shrinking.
+  const everyRow: OffenceRow[] = useMemo(() => {
     if (!videoData) return []
     const rows: OffenceRow[] = []
     for (const segment of videoData.events) {
@@ -172,6 +225,19 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     }
     return rows
   }, [videoData])
+
+  const suppressedCount = useMemo(
+    () => everyRow.filter((r) => r.offence.suppressed).length,
+    [everyRow]
+  )
+
+  // What the reviewer actually works through. Suppressed findings are hidden
+  // by default but reachable via the toggle - they are not deleted, and a
+  // filter nobody can look behind is one nobody can correct.
+  const allRows: OffenceRow[] = useMemo(
+    () => (showSuppressed ? everyRow : everyRow.filter((r) => !r.offence.suppressed)),
+    [everyRow, showSuppressed]
+  )
 
   const types = useMemo(
     () => Array.from(new Set(allRows.map((r) => r.offence.type))).sort(),
@@ -241,6 +307,18 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         <p className="text-muted-foreground">
           {allRows.length} findings across {videoData.event_count} activity{' '}
           {videoData.event_count === 1 ? 'segment' : 'segments'}
+          {suppressedCount > 0 && (
+            <>
+              {' · '}
+              <button
+                onClick={() => setShowSuppressed(!showSuppressed)}
+                className="underline underline-offset-2 hover:text-foreground transition-colors"
+                title="CLIP read these crops as an innocent explanation. They are hidden, not deleted."
+              >
+                {showSuppressed ? 'hide' : 'show'} {suppressedCount} filtered by CLIP
+              </button>
+            </>
+          )}
         </p>
       </div>
 
@@ -380,6 +458,10 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                       <span>{formatTime(offence.startSec)}</span>
                     </div>
 
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <ClipBadge offence={offence} />
+                    </div>
+
                     {isConfirmed && (
                       <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold mt-1">
                         <Check className="w-3.5 h-3.5" /> Confirmed
@@ -428,6 +510,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                     <span className="text-xs text-muted-foreground font-mono">
                       {(offence.confidence * 100).toFixed(0)}% confidence
                     </span>
+                    <ClipBadge offence={offence} />
                   </div>
                   <h3 className="text-xl font-bold leading-snug text-foreground">{offence.label}</h3>
                 </div>

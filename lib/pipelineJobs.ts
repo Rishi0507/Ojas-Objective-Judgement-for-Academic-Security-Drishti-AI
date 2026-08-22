@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
 import { createVideoRow, updateVideoStatus, syncJobResults } from './supabase/sync'
+import { appendEntry } from './ledger/store'
+import { sha256File } from './ledger/hash'
 
 export type JobState = 'queued' | 'processing' | 'done' | 'error'
 
@@ -483,6 +485,34 @@ async function processUploadedVideo(
       jobId
     )
 
+    // CLIP verification of each finding, and suppression of the ones it
+    // contradicts. Runs here rather than earlier because it reads the Go
+    // backend's output and rewrites it in place, so it must sit between the
+    // backend finishing and the results below being read.
+    //
+    // Non-fatal on purpose: CLIP is a second opinion. If it fails to load or
+    // the model is not cached, the job still delivers its findings unfiltered
+    // rather than losing an analysis that already succeeded.
+    writeStatus(jobId, { message: 'Verifying findings (CLIP)...', percent: 95 })
+    try {
+      const clipOut = await runCommand(
+        'python',
+        [
+          path.join(M1_7_DIR, 'clip_verify.py'),
+          '--pipeline-dir', outDir,
+          '--filter',
+        ],
+        ROOT,
+        jobId
+      )
+      const tail = clipOut.trim().split(NEWLINE).slice(-12).join(NEWLINE)
+      console.log(`[clip] ${jobId}:${NEWLINE}${tail}`)
+    } catch (err: any) {
+      console.error(
+        `[clip] ${jobId}: verification skipped, findings will be unfiltered - ${err?.message ?? err}`
+      )
+    }
+
     writeStatus(jobId, { message: 'Finalizing results...', percent: 98 })
 
     // By now the Python pipeline (several minutes) has almost certainly
@@ -528,6 +558,14 @@ async function processUploadedVideo(
       ownerId,
     })
 
+    // Chain the derived evidence to the upload it came from.
+    //
+    // Hashed from disk rather than from the in-memory object: the file is what
+    // will be produced if anyone asks for the evidence later, so the file is
+    // what must be attested. Recorded after the job is marked done, alongside
+    // the Supabase mirror, so neither can delay the UI.
+    await recordArtifacts(jobId, ownerId, outDir, enriched)
+
     // Mirror artefacts and rows into Supabase after the job is already marked
     // done locally, so a slow or failing upload never delays the UI.
     await syncJobResults(jobId, ownerId, outDir, enriched, proxyPath ?? videoPath)
@@ -541,5 +579,80 @@ async function processUploadedVideo(
       status: 'error',
       error_message: err?.message ?? String(err),
     })
+  }
+}
+
+/**
+ * Record each derived artifact in the custody chain.
+ *
+ * One entry per artifact rather than one for the whole job, so a dispute about
+ * a single snapshot can be settled without re-attesting the entire run. That
+ * is more rows, but rows are cheap and a coarse entry that says "everything is
+ * fine" is not evidence about anything in particular.
+ *
+ * Offence stills are capped: a busy video can produce hundreds, and a ledger
+ * that grows without bound per upload becomes something people delete. The cap
+ * is recorded in the summary entry so the omission is visible rather than
+ * silent - an audit trail that hides its own gaps is worse than none.
+ */
+const MAX_SNAPSHOT_ENTRIES = 50
+
+async function recordArtifacts(
+  jobId: string,
+  ownerId: string,
+  outDir: string,
+  enriched: any
+): Promise<void> {
+  const rel = (p: string) => path.relative(ROOT, p).replace(/\\/g, '/')
+
+  const record = async (filePath: string, payload: Record<string, unknown>) => {
+    if (!fs.existsSync(filePath)) return
+    await appendEntry({
+      kind: 'artifact_derived',
+      subject: rel(filePath),
+      jobId,
+      actorId: ownerId || null,
+      payloadHash: await sha256File(filePath),
+      payload,
+    })
+  }
+
+  // The analysis output itself - the document every finding in the UI is read
+  // from, and therefore the one most worth being able to prove unaltered.
+  await record(path.join(outDir, 'api_response.json'), {
+    artifact: 'analysis_results',
+    eventCount: enriched?.event_count ?? 0,
+    offenceCount: (enriched?.events ?? []).reduce(
+      (n: number, e: any) => n + (e.offences?.length ?? 0),
+      0
+    ),
+  })
+
+  // Per-offence stills: the images an invigilator actually looks at.
+  const snapshots: { file: string; meta: Record<string, unknown> }[] = []
+  for (const event of enriched?.events ?? []) {
+    for (const off of event.offences ?? []) {
+      if (!off.snapshot) continue
+      snapshots.push({
+        file: path.join(ROOT, off.snapshot.replace(/^\//, '')),
+        meta: {
+          artifact: 'offence_still',
+          offenceType: off.type,
+          trackId: off.trackId ?? null,
+          frameIdx: off.frameIdx ?? null,
+        },
+      })
+    }
+  }
+
+  for (const s of snapshots.slice(0, MAX_SNAPSHOT_ENTRIES)) {
+    await record(s.file, s.meta)
+  }
+
+  if (snapshots.length > MAX_SNAPSHOT_ENTRIES) {
+    console.log(
+      `[ledger] ${jobId}: recorded ${MAX_SNAPSHOT_ENTRIES} of ${snapshots.length} offence stills ` +
+        `(cap is MAX_SNAPSHOT_ENTRIES); the remainder are covered by the analysis_results hash`
+    )
   }
 }

@@ -1,8 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ArrowUpRight, ArrowRight, Shield, Zap, Target, LogOut, Loader2, AlertCircle } from 'lucide-react'
-import { DotLottieReact } from '@lottiefiles/dotlottie-react'
+import { ArrowUpRight, Shield, Zap, Target, LogOut, Loader2, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/useAuth'
 
 /** Google's mark, inlined so the button works offline and needs no CDN. */
@@ -17,10 +16,35 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
+/**
+ * Claims made on the landing page.
+ *
+ * Every line here has to be one the system can actually be shown doing. The
+ * previous copy advertised "sub-100ms inference latency" and a "99.2%
+ * high-confidence capture rate" - neither was measured, and the second was a
+ * fabricated accuracy figure for a system with no evaluation set. Publishing
+ * invented numbers on a product whose entire purpose is producing evidence
+ * against students is the fastest way to make every real finding suspect.
+ */
 const useCases = [
-  { icon: Zap, tag: 'optical flow', title: 'REAL-TIME MOTION SCORING', desc: 'Sub-100ms inference latency across high-resolution CCTV streams.' },
-  { icon: Shield, tag: 'privacy', title: 'ZERO FACIAL BIOMETRICS', desc: 'No biometric data stored. Pure behavioral trajectory tracking.' },
-  { icon: Target, tag: 'auditability', title: 'HEURISTIC POSTURE LOGGING', desc: '99.2% high-confidence anomaly capture rate on examinee posture.' },
+  {
+    icon: Zap,
+    tag: 'offline',
+    title: 'RUNS FULLY ON-PREMISES',
+    desc: 'Detection, pose estimation and verification all run locally. No footage leaves the machine it was uploaded to.',
+  },
+  {
+    icon: Shield,
+    tag: 'privacy',
+    title: 'ZERO FACIAL BIOMETRICS',
+    desc: 'No face recognition and no identity mapping. Subjects are anonymous track IDs that exist only within a single video.',
+  },
+  {
+    icon: Target,
+    tag: 'auditability',
+    title: 'EVERY FINDING IS GROUNDED',
+    desc: 'Each claim cites the frame and bounding box it came from, and anything that cannot is dropped rather than shown.',
+  },
 ]
 
 interface HeroProps {
@@ -48,13 +72,9 @@ export default function Hero({ onLaunch }: HeroProps) {
             transition={{ duration: 0.4 }}
             className="lg:col-span-7 text-left space-y-6"
           >
-            {/* Mint Tag Pill (64px Radius) */}
             <div className="flex items-center gap-3">
               <span className="tag-mint">
-                [tag: live inference stream]
-              </span>
-              <span className="font-mono text-xs text-smoke">
-                SLIDE 1/3
+                offline video analysis
               </span>
             </div>
 
@@ -64,7 +84,7 @@ export default function Hero({ onLaunch }: HeroProps) {
             </h1>
 
             <p className="text-body font-normal text-slate max-w-lg leading-relaxed">
-              Brutalist, material-product analytics. High-contrast vision intelligence operating on warm gray canvas without clinical noise.
+              Upload exam hall CCTV and get back reviewable findings: prohibited objects, head turns, gestures and loitering, each pinned to the second and the frame it happened in. Nothing is auto-flagged as cheating - an invigilator decides.
             </p>
 
             {/* Action Buttons & Auth */}
@@ -93,16 +113,6 @@ export default function Hero({ onLaunch }: HeroProps) {
                   </button>
                 )}
 
-                <button
-                  onClick={onLaunch}
-                  className="btn-ghost"
-                >
-                  <span>View Architecture</span>
-                </button>
-
-                <div className="px-3 py-1 bg-voltage-yellow text-black font-mono text-xs font-bold rounded-sm">
-                  institutional access live
-                </div>
               </div>
 
               {user && (
@@ -145,17 +155,42 @@ export default function Hero({ onLaunch }: HeroProps) {
           >
             <div className="card bg-paper-white rounded-[32px] p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-mist-gray pb-3">
-                <span className="font-condensed text-xl font-bold uppercase tracking-tight">Live Feed Stream</span>
-                <span className="tag-mint">active stream</span>
+                <span className="font-condensed text-xl font-bold uppercase tracking-tight">What A Finding Looks Like</span>
+                <span className="tag-mint">illustration</span>
               </div>
 
-              <div className="aspect-video bg-warm-canvas rounded-[24px] p-4 relative flex items-center justify-center overflow-hidden">
-                <DotLottieReact
-                  src="https://lottie.host/8cf4ba71-e5fb-44f3-8134-178c4d389417/0CCsdcgNIP.json"
-                  loop
-                  autoplay
-                  className="w-4/5 h-4/5"
-                />
+              {/*
+                Inline SVG rather than the CDN-hosted animation that was here.
+                This is an offline exam-hall system: a landing page that only
+                renders correctly with internet access contradicts the product,
+                and the Google mark above is inlined for exactly this reason.
+                Labelled "illustration" because it is a diagram of the output
+                format, not a screenshot of a real detection.
+              */}
+              <div className="aspect-video bg-warm-canvas rounded-[24px] p-4 relative overflow-hidden">
+                <svg viewBox="0 0 320 180" className="w-full h-full" role="img"
+                     aria-label="Diagram: two people detected in a frame, one flagged, with a timeline of motion below.">
+                  <rect x="0" y="0" width="320" height="140" rx="8" fill="var(--mist-gray, #E8E6E1)" />
+
+                  {/* Unflagged subject */}
+                  <rect x="38" y="46" width="58" height="78" rx="3"
+                        fill="none" stroke="var(--slate, #6B6862)" strokeWidth="2" />
+                  <circle cx="67" cy="64" r="11" fill="var(--slate, #6B6862)" opacity="0.35" />
+                  <text x="38" y="40" fontSize="9" fontFamily="monospace" fill="var(--slate, #6B6862)">Track-02</text>
+
+                  {/* Flagged subject */}
+                  <rect x="176" y="38" width="62" height="86" rx="3"
+                        fill="none" stroke="#D93025" strokeWidth="2.5" />
+                  <circle cx="207" cy="58" r="12" fill="#D93025" opacity="0.28" />
+                  <rect x="222" y="74" width="15" height="21" rx="2" fill="#D93025" opacity="0.55" />
+                  <text x="176" y="32" fontSize="9" fontFamily="monospace" fill="#D93025">Track-01 · phone</text>
+
+                  {/* Motion timeline with the flagged window marked */}
+                  <rect x="0" y="152" width="320" height="14" rx="4" fill="var(--mist-gray, #E8E6E1)" />
+                  <rect x="168" y="152" width="46" height="14" rx="4" fill="#D93025" opacity="0.75" />
+                  <text x="0" y="178" fontSize="8" fontFamily="monospace" fill="var(--slate, #6B6862)">00:00</text>
+                  <text x="292" y="178" fontSize="8" fontFamily="monospace" fill="var(--slate, #6B6862)">END</text>
+                </svg>
               </div>
             </div>
           </motion.div>
@@ -170,16 +205,15 @@ export default function Hero({ onLaunch }: HeroProps) {
           className="card-inverted bg-carbon-black rounded-[32px] p-10 space-y-6 text-left"
         >
           <div className="flex items-center justify-between">
-            <span className="tag-mint">dramatic contrast zone</span>
-            <span className="font-mono text-xs text-smoke">REF 000000</span>
+            <span className="tag-mint">evidence, not verdicts</span>
           </div>
 
           <h2 className="font-condensed text-4xl md:text-6xl font-bold text-paper-white uppercase leading-[0.9] tracking-tight">
-            ENGINEERED WITHOUT CLINICAL DECORATION. FLAT SURFACES, ZERO ELEVATION.
+            THE SYSTEM FINDS MOMENTS WORTH LOOKING AT. A PERSON DECIDES WHAT THEY MEAN.
           </h2>
 
           <p className="text-body text-smoke max-w-2xl font-normal leading-relaxed">
-            Every card surface sits flat against the warm gray canvas. Scale contrast carries visual hierarchy without drop shadows.
+            Detection here is heuristic: a wrist crossing into a neighbour&apos;s space is evidence of reaching, not proof of a hand-off. Every finding carries the frame it came from and the uncertainty around it, and every review decision is recorded in an append-only custody log.
           </p>
         </motion.div>
 
