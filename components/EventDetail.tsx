@@ -759,7 +759,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                       {off.snapshot ? (
                         <button
                           onClick={() => setLightbox(off.snapshot!)}
-                          className="flex-shrink-0 w-32 h-[96px] rounded-md overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
+                          className="flex-shrink-0 w-44 h-[120px] rounded-md overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
                           title="Click to enlarge the auto-captured evidence"
                         >
                           <img
@@ -769,7 +769,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                           />
                         </button>
                       ) : (
-                        <div className="flex-shrink-0 w-32 h-[96px] rounded-md border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                        <div className="flex-shrink-0 w-44 h-[120px] rounded-md border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
                           No still captured
                         </div>
                       )}
