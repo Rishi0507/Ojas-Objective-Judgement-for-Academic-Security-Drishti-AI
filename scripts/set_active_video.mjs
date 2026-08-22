@@ -134,6 +134,10 @@ for (const ev of events) {
 enriched.pipeline_dir = jobId
 enriched.source_video_path = path.relative(ROOT, playbackPath).split(path.sep).join('/')
 
-fs.writeFileSync(path.join(ROOT, 'public', 'api', 'events.json'), JSON.stringify(enriched, null, 2))
+// public/api/ is not tracked (events.json is per-machine run output), so the
+// directory may not exist on a fresh clone or after it was removed upstream.
+const apiDir = path.join(ROOT, 'public', 'api')
+fs.mkdirSync(apiDir, { recursive: true })
+fs.writeFileSync(path.join(apiDir, 'events.json'), JSON.stringify(enriched, null, 2))
 fs.writeFileSync(path.join(outDir, 'api_response.json'), JSON.stringify(enriched, null, 2))
 console.log(`\nActive video is now: ${jobId} (${events.length} events)`)
