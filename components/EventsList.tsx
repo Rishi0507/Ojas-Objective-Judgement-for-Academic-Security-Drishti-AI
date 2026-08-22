@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Clock, ListFilter, AlertTriangle } from 'lucide-react'
+import { Search, Clock, ListFilter, AlertTriangle, X, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface OffenceData {
@@ -69,6 +69,16 @@ function formatTime(seconds: number): string {
 }
 
 type SortKey = 'time' | 'confidence' | 'type'
+type Verdict = 'dismissed' | 'confirmed'
+
+/**
+ * Stable identity for one finding, so a reviewer's verdict survives a reload
+ * and re-running the pipeline on the same video. Deliberately not the array
+ * index, which changes with sorting and filtering.
+ */
+function offenceKey(o: OffenceData): string {
+  return `${o.trackId ?? 'none'}|${o.type}|${o.frameIdx}`
+}
 
 export default function EventsList({ onEventSelect }: EventsListProps) {
   const [videoData, setVideoData] = useState<VideoData | null>(null)
@@ -77,6 +87,8 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   const [trackFilter, setTrackFilter] = useState('all')
   const [sortKey, setSortKey] = useState<SortKey>('confidence')
   const [query, setQuery] = useState('')
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({})
+  const [showDismissed, setShowDismissed] = useState(false)
 
   useEffect(() => {
     fetch('/api/video')
@@ -92,7 +104,28 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         setVideoData(null)
         setLoading(false)
       })
+
+    fetch('/api/offence-review')
+      .then((res) => res.json())
+      .then((d) => setVerdicts(d?.verdicts ?? {}))
+      .catch(() => setVerdicts({}))
   }, [])
+
+  // Optimistic: reflect the verdict immediately, then persist. A reviewer
+  // working through a list should never wait on a round-trip per decision.
+  const setVerdict = (key: string, verdict: Verdict | null) => {
+    setVerdicts((prev) => {
+      const next = { ...prev }
+      if (verdict === null) delete next[key]
+      else next[key] = verdict
+      return next
+    })
+    fetch('/api/offence-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, verdict }),
+    }).catch((err) => console.error('Failed to save verdict:', err))
+  }
 
   // Offences are the unit of review, so flatten them out of their segments
   // rather than making the investigator open a time window to find them.
@@ -126,9 +159,15 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     return counts
   }, [allRows])
 
+  const dismissedCount = useMemo(
+    () => allRows.filter((r) => verdicts[offenceKey(r.offence)] === 'dismissed').length,
+    [allRows, verdicts]
+  )
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
     const filtered = allRows
+      .filter((r) => showDismissed || verdicts[offenceKey(r.offence)] !== 'dismissed')
       .filter((r) => typeFilter === 'all' || r.offence.type === typeFilter)
       .filter((r) => trackFilter === 'all' || r.offence.trackId === trackFilter)
       .filter(
@@ -144,7 +183,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
       if (sortKey === 'type') return a.offence.type.localeCompare(b.offence.type) || a.offence.startSec - b.offence.startSec
       return a.offence.startSec - b.offence.startSec
     })
-  }, [allRows, typeFilter, trackFilter, query, sortKey])
+  }, [allRows, typeFilter, trackFilter, query, sortKey, verdicts, showDismissed])
 
   if (loading) {
     return (
@@ -277,9 +316,19 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
       </div>
 
       <div className="card p-6">
-        <h2 className="text-lg font-semibold mb-4">
-          {rows.length} {rows.length === 1 ? 'Offence' : 'Offences'}
-        </h2>
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h2 className="text-lg font-semibold">
+            {rows.length} {rows.length === 1 ? 'Offence' : 'Offences'}
+          </h2>
+          {dismissedCount > 0 && (
+            <button
+              onClick={() => setShowDismissed(!showDismissed)}
+              className="text-xs text-muted-foreground hover:text-foreground font-medium underline"
+            >
+              {showDismissed ? 'Hide' : 'Show'} {dismissedCount} dismissed
+            </button>
+          )}
+        </div>
 
         {rows.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">No offences match these filters.</div>
@@ -287,11 +336,15 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
           <div className="space-y-3">
             {rows.map(({ offence, segment }, i) => {
               const style = styleFor(offence.type)
+              const key = offenceKey(offence)
+              const isDismissed = verdicts[key] === 'dismissed'
               return (
-                <button
+                <div
                   key={`${segment.id}-${offence.type}-${offence.frameIdx}-${i}`}
-                  onClick={() => onEventSelect(segment.id)}
-                  className="w-full p-4 card card-hover text-left flex gap-4"
+                  className={cn(
+                    'w-full p-4 card text-left flex gap-4 transition-opacity',
+                    isDismissed ? 'opacity-50' : 'card-hover'
+                  )}
                 >
                   {offence.snapshot ? (
                     <img
@@ -332,8 +385,40 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                         segment {segment.id.replace('event-', '')} · {formatTime(segment.start)}–{formatTime(segment.end)}
                       </span>
                     </div>
+
+                    <div className="flex items-center gap-3 mt-2">
+                      <button
+                        onClick={() => onEventSelect(segment.id)}
+                        className="text-xs text-primary hover:underline font-medium"
+                      >
+                        Review in context
+                      </button>
+                      {isDismissed ? (
+                        <>
+                          <span className="text-xs text-muted-foreground italic">
+                            Dismissed as false positive
+                          </span>
+                          <button
+                            onClick={() => setVerdict(key, null)}
+                            className="text-xs text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
+                          >
+                            <Undo2 className="w-3 h-3" strokeWidth={2} />
+                            Undo
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setVerdict(key, 'dismissed')}
+                          className="text-xs text-muted-foreground hover:text-red-600 font-medium flex items-center gap-1"
+                          title="Detection is heuristic — discard this if it is wrong"
+                        >
+                          <X className="w-3 h-3" strokeWidth={2.5} />
+                          Discard as false positive
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>

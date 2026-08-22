@@ -192,20 +192,34 @@ class YOLOInferenceService:
             x1, y1, x2, y2 = det["bbox"]
             class_name = det["class_name"]
             confidence = det["confidence"]
-            
-            # Get color (BGR order — cv2.rectangle expects (B, G, R), not (R, G, B))
-            color = colors.get(class_name, (0, 255, 255))  # Yellow default
+
+            # Get color (BGR order — cv2.rectangle expects (B, G, R), not (R, G, B)).
+            # A detection may override it: offence stills mark the subject of the
+            # finding in red so the reviewer sees who is being accused, instead of
+            # an undifferentiated wall of green boxes over everyone in the room.
+            if det.get("color"):
+                color = tuple(int(c) for c in det["color"])
+            else:
+                color = colors.get(class_name, (0, 255, 255))  # Yellow default
             
             # Draw box
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-            
-            # Draw label
-            label = f"{class_name} {confidence:.2f}"
+            # Highlighted subjects get a heavier outline so the accused person
+            # is unmistakable at thumbnail size.
+            thickness = 3 if det.get("color") else 2
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
+
+            # Draw label — a caller-supplied one (e.g. "Track-29 · Head Turn")
+            # is more use to a reviewer than the raw class name.
+            label = det.get("label") or f"{class_name} {confidence:.2f}"
             label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             label_y = max(y1 - 10, label_size[1])
-            
-            cv2.putText(img, label, (x1, label_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+            # Solid backing plate: thin coloured text over busy CCTV footage is
+            # frequently unreadable.
+            cv2.rectangle(img, (x1, label_y - label_size[1] - 6),
+                          (x1 + label_size[0] + 8, label_y + 4), color, -1)
+            cv2.putText(img, label, (x1 + 4, label_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         # Save annotated frame
         cv2.imwrite(output_path, img)

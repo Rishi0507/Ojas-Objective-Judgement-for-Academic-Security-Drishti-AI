@@ -84,6 +84,9 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 				analyseMicroMotions(enrichedEvent.PersonTracks, eventPoses)...)
 		}
 
+		// Per-offence stills: the accused person in red, nobody else drawn.
+		renderOffenceStills(&enrichedEvent, detector, framesDir, header.VideoID, outDir)
+
 		// Give every offence a still. Only prohibited-object findings write a
 		// purpose-built snapshot during detection, so behavioural ones
 		// (head turns, gestures, reaches) would otherwise reach the UI with
@@ -768,6 +771,84 @@ func classifyOffences(event Event, ev EnrichedEvent, outDir string, posesByTrack
 	}
 
 	return offences
+}
+
+// renderOffenceStills gives each finding its own image showing just the accused
+// person, outlined in red and captioned with who and what.
+//
+// Replaces reuse of the shared annotated frame, which drew every detected
+// person in green: at thumbnail size that is a cluster of identical boxes that
+// never answers the reviewer's actual question — which of these people is this
+// finding about. Offences with no attributable person (crowd disturbance,
+// motion anomaly) keep the general frame, since there is no single subject.
+func renderOffenceStills(ev *EnrichedEvent, detector *YOLODetector, framesDir, videoID, outDir string) {
+	if detector == nil {
+		return
+	}
+
+	subjectDir := filepath.Join(outDir, "offence_stills")
+	os.MkdirAll(subjectDir, 0755)
+
+	for i := range ev.Offences {
+		off := &ev.Offences[i]
+		if off.TrackID == "" {
+			continue // no single subject to highlight
+		}
+
+		// The subject's box on the frame this finding refers to.
+		var subject []int
+		for _, t := range ev.PersonTracks {
+			if t.TrackID != off.TrackID {
+				continue
+			}
+			for _, b := range t.BBoxes {
+				if b.FrameIdx == off.FrameIdx {
+					subject = []int{b.X1, b.Y1, b.X2, b.Y2}
+					break
+				}
+			}
+			break
+		}
+		if subject == nil {
+			continue // track wasn't observed on that exact frame
+		}
+
+		pattern := filepath.Join(framesDir, fmt.Sprintf("%s__f%07d__t*.jpg", videoID, off.FrameIdx))
+		matches, err := filepath.Glob(pattern)
+		if err != nil || len(matches) == 0 {
+			continue
+		}
+
+		out := filepath.Join(subjectDir, fmt.Sprintf("%s_%s_f%07d.jpg", off.TrackID, off.Type, off.FrameIdx))
+		label := fmt.Sprintf("%s - %s", off.TrackID, offenceDisplayName(off.Type))
+		if err := detector.AnnotateOffence(matches[0], subject, label, out); err != nil {
+			log.Printf("[WARN] offence still failed (%s %s): %v", off.TrackID, off.Type, err)
+			continue
+		}
+		off.Snapshot = filepath.ToSlash(out)
+	}
+}
+
+func offenceDisplayName(t string) string {
+	switch t {
+	case "prohibited_object":
+		return "Prohibited Object"
+	case "object_exchange":
+		return "Object Exchange"
+	case "loitering":
+		return "Loitering"
+	case "crowd_disturbance":
+		return "Crowd Disturbance"
+	case "motion_anomaly":
+		return "Motion Anomaly"
+	case "head_turn":
+		return "Head Turn"
+	case "hand_gesture":
+		return "Hand Gesture"
+	case "neighbour_reach":
+		return "Neighbour Reach"
+	}
+	return t
 }
 
 // computePersonProximity scores how tightly people cluster during an event,
