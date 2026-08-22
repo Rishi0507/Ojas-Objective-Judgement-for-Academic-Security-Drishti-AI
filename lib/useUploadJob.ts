@@ -85,5 +85,17 @@ export function useUploadJob(onJobDone: () => void) {
   const dismissJob = useCallback(() => setJob(null), [])
   const dismissError = useCallback(() => setUploadError(null), [])
 
-  return { job, uploadError, uploadFile, dismissJob, dismissError }
+  const cancelJob = useCallback(async () => {
+    if (!job || !job.jobId) return
+    try {
+      await fetch(`/api/upload/cancel?job=${job.jobId}`, { method: 'POST' })
+      setUploadError('Job cancelled by user')
+      setJob(null)
+      localStorage.removeItem(STORAGE_KEY)
+    } catch (err) {
+      console.error('Failed to cancel job:', err)
+    }
+  }, [job])
+
+  return { job, uploadError, uploadFile, dismissJob, dismissError, cancelJob }
 }

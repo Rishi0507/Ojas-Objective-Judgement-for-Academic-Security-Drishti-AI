@@ -22,7 +22,7 @@ export default function Home() {
   // polling or loses track of an in-progress upload — the pipeline itself
   // runs server-side regardless, this just keeps the UI in sync with it
   // no matter which view is active.
-  const { job, uploadError, uploadFile, dismissJob, dismissError } = useUploadJob(() => {})
+  const { job, uploadError, uploadFile, dismissJob, dismissError, cancelJob } = useUploadJob(() => {})
 
   if (showHero) {
     return (
@@ -62,6 +62,14 @@ export default function Home() {
                 </div>
               )}
             </div>
+            <button 
+              onClick={cancelJob} 
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors text-xs font-medium flex-shrink-0"
+              title="Stop processing"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Stop
+            </button>
           </div>
         )}
 

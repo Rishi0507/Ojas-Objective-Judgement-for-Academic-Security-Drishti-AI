@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { LayoutDashboard, Video, FileSearch, Settings, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import SettingsModal from './SettingsModal'
 
 interface SidebarProps {
   activeView: string
@@ -12,10 +14,12 @@ interface SidebarProps {
 const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Overview' },
   { id: 'analysis', icon: Video, label: 'Analysis' },
-  { id: 'events', icon: FileSearch, label: 'Events' },
+  { id: 'events', icon: FileSearch, label: 'Segments' },
 ]
 
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
   return (
     <aside className="w-20 bg-card border-r border-border flex flex-col items-center py-6 gap-6">
       <div className="mb-4">
@@ -53,11 +57,17 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
       </nav>
 
       <button 
+        onClick={() => setIsSettingsOpen(true)}
         className="p-4 text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors" 
         title="Settings"
       >
         <Settings className="w-6 h-6" strokeWidth={2} />
       </button>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </aside>
   )
 }
