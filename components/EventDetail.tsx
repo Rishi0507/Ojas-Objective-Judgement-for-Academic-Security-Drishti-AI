@@ -123,44 +123,42 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     || eventData?.clipUrl
     || sourceVideoPath
 
+  // Sync isPlaying with the native video element play/pause events.
+  // This is kept separate from the timeupdate effect so it also picks up
+  // play/pause triggered by clicking the video element directly.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onPlay = () => setIsPlaying(true)
+    const onPause = () => setIsPlaying(false)
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
+    return () => {
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+    }
+  })
+
   useEffect(() => {
     const video = videoRef.current
     if (!video || !eventData) return
 
     const handleTimeUpdate = () => {
-      // Absolute position in the source recording, so timestamps and frame
-      // lookups stay correct whether we're playing a cut clip or the full video.
       const absoluteTime = clipOffset + video.currentTime
       setCurrentTime(absoluteTime)
 
-      // Annotated frames are keyed by SOURCE frame index, so this must use
-      // the video's real frame rate. It was previously hardcoded to 8fps,
-      // which on a 25fps recording pulled frames from a completely different
-      // part of the video (at 240s it showed the frame from 77s).
       if (videoFps > 0) {
         setCurrentFrameIdx(Math.floor(absoluteTime * videoFps))
       }
 
-      // Auto-pause at event end (only meaningful when playing the full video;
-      // a cut clip simply ends).
       if (!usingEventClip && absoluteTime >= eventData.end) {
         video.pause()
         setIsPlaying(false)
       }
     }
 
-    const handlePlay = () => setIsPlaying(true)
-    const handlePause = () => setIsPlaying(false)
-
     video.addEventListener('timeupdate', handleTimeUpdate)
-    video.addEventListener('play', handlePlay)
-    video.addEventListener('pause', handlePause)
-
-    return () => {
-      video.removeEventListener('timeupdate', handleTimeUpdate)
-      video.removeEventListener('play', handlePlay)
-      video.removeEventListener('pause', handlePause)
-    }
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate)
   }, [eventData, videoFps, usingEventClip, clipOffset])
 
   const handlePlayPause = () => {
@@ -428,10 +426,9 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                     background: `linear-gradient(to right, hsl(215 25% 27%) 0%, hsl(215 25% 27%) ${getSeekPosition()}%, hsl(0 0% 96%) ${getSeekPosition()}%, hsl(0 0% 96%) 100%)`
                   }}
                 />
-                <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                  <span>{formatTime(eventData.start)}</span>
-                  <span className="text-foreground font-semibold">{formatTime(currentTime)}</span>
-                  <span>{formatTime(eventData.end)}</span>
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-foreground font-semibold tabular-nums">{formatTime(currentTime)}</span>
+                  <span className="text-muted-foreground">{formatTime(eventData.end)}</span>
                 </div>
               </div>
             </div>
