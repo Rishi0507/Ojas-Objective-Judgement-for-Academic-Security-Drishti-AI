@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Video, Activity, AlertTriangle, CheckCircle, Clock, TrendingUp, Eye, Upload } from 'lucide-react'
+import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { JobStatus } from '@/lib/useUploadJob'
 
@@ -35,6 +35,7 @@ interface VideoData {
 
 export default function Dashboard({ onVideoSelect, job, onUploadFile }: DashboardProps) {
   const [videoData, setVideoData] = useState<VideoData | null>(null)
+  const [verdicts, setVerdicts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -54,8 +55,21 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
       })
   }
 
+  // Reviewer verdicts, so the "Reviewed" tile reflects work actually done.
+  // It was previously hardcoded to 0 with a "0%" caption, which meant the
+  // dashboard kept reporting nothing reviewed no matter how much an
+  // invigilator had got through - a stat that is always wrong is worse than
+  // no stat, because people act on it.
+  const loadVerdicts = () => {
+    fetch('/api/offence-review')
+      .then((r) => r.json())
+      .then((d) => setVerdicts(d?.verdicts ?? {}))
+      .catch(() => setVerdicts({}))
+  }
+
   useEffect(() => {
     loadVideoData()
+    loadVerdicts()
   }, [])
 
   // job/upload polling now lives in page.tsx (via useUploadJob) so it
@@ -64,6 +78,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   useEffect(() => {
     if (job?.state === 'done') {
       loadVideoData()
+      loadVerdicts()
     }
   }, [job?.state, job?.jobId])
 
@@ -86,13 +101,30 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   const totalVideos = videoData ? 1 : 0
   const totalEvents = videoData?.event_count ?? 0
   const highPriorityCount = videoData ? videoData.events.filter(e => e.priority === 'high').length : 0
-  const reviewedCount = 0 // None reviewed yet
+
+  // Findings a reviewer will actually see. Suppressed ones (CLIP contradicted
+  // them - see clip_verify.py --filter) are excluded so this tile agrees with
+  // the Findings list; counting them here would show a total the reviewer
+  // could never work through.
+  const totalOffences = videoData
+    ? videoData.events.reduce(
+        (n, e) => n + ((e.offences ?? []).filter((o: any) => !o.suppressed).length),
+        0
+      )
+    : 0
+  const reviewedCount = Object.keys(verdicts).length
+  const reviewedPct = totalOffences > 0 ? Math.round((reviewedCount / totalOffences) * 100) : 0
 
   const stats = [
-    { label: 'Total Videos', value: totalVideos.toString(), icon: Video, change: videoData ? 'Processed' : 'None yet' },
-    { label: 'Segments Detected', value: totalEvents.toString(), icon: Activity, change: 'Motion windows' },
-    { label: 'High Priority', value: highPriorityCount.toString(), icon: AlertTriangle, change: 'Unreviewed' },
-    { label: 'Reviewed', value: reviewedCount.toString(), icon: CheckCircle, change: '0%' },
+    { label: 'Videos Processed', value: totalVideos.toString(), icon: Video, change: videoData ? 'This machine' : 'None yet' },
+    { label: 'Motion Segments', value: totalEvents.toString(), icon: Activity, change: 'Windows of activity' },
+    { label: 'Findings', value: totalOffences.toString(), icon: AlertTriangle, change: `${highPriorityCount} high priority` },
+    {
+      label: 'Reviewed',
+      value: reviewedCount.toString(),
+      icon: CheckCircle,
+      change: totalOffences > 0 ? `${reviewedPct}% of findings` : 'Nothing to review yet',
+    },
   ]
 
   // Generate activity data from events
@@ -111,7 +143,11 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   const video = videoData ? {
     id: videoData.video_id,
     name: videoData.video_id,
-    duration: `${Math.floor(videoData.events[videoData.events.length - 1]?.end / 60)}:${Math.floor(videoData.events[videoData.events.length - 1]?.end % 60).toString().padStart(2, '0')}`,
+    // The end of the last detected segment, NOT the video's length - the
+    // backend's metadata carries no duration field. Labelled accordingly
+    // rather than presented as a runtime it is not: on footage that goes
+    // quiet before the end, the two differ by minutes.
+    lastActivity: `${Math.floor(videoData.events[videoData.events.length - 1]?.end / 60)}:${Math.floor(videoData.events[videoData.events.length - 1]?.end % 60).toString().padStart(2, '0')}`,
     status: 'completed',
     events: videoData.event_count,
     quality: videoData.quality_metrics.observability,
@@ -125,7 +161,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <h1 className="text-4xl font-bold tracking-tight mb-2">
             Analytics <span className="font-serif italic">Dashboard</span>
           </h1>
-          <p className="text-muted-foreground">Real-time insights from CCTV monitoring</p>
+          <p className="text-muted-foreground">Results from the most recently processed video</p>
         </div>
 
         <div className="flex-shrink-0">
@@ -178,7 +214,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Activity Timeline</h2>
-              <p className="text-sm text-muted-foreground">Video duration: {video?.duration ?? '—'}</p>
+              <p className="text-sm text-muted-foreground">Last activity at {video?.lastActivity ?? '—'}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
@@ -265,7 +301,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="w-4 h-4" />
-                      {video.duration}
+                      {video.lastActivity}
                     </span>
                     <span>•</span>
                     <span>{video.events} segments</span>

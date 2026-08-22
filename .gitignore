@@ -115,3 +115,9 @@ next-env.d.ts
 # IDE/Agent config
 .claude/
 .vscode/
+
+# Per-run analysis output. Written by the pipeline on every upload and points
+# at paths inside the gitignored pipeline_out/, so a committed copy is stale
+# on any other machine - and it carries real detection results from whatever
+# footage was last processed, which is not something to push to a shared repo.
+/public/api/events.json

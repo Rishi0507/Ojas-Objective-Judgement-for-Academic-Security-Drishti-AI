@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Eye, ArrowUpRight } from 'lucide-react'
+import { Bell, Eye } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface HeaderProps {
@@ -33,27 +33,20 @@ export default function Header({ onNotificationClick }: HeaderProps) {
 
   return (
     <header className="h-32 px-8 bg-warm-canvas font-sans text-body select-none flex items-center justify-between">
-      {/* Wordmark in Uppercase Condensed */}
+      {/*
+        App chrome, not a marketing site. This header renders inside the
+        dashboard (see app/page.tsx), which is why the "Solutions / Technology
+        / Case Studies / Pricing" nav pill and the "Schedule Demo" CTA that
+        used to sit here are gone: none of them had a click handler, and a
+        control that looks interactive and does nothing costs a reviewer time
+        every time they try it. The version tag went too - it read "live v2.4"
+        against no release process at all.
+      */}
       <div className="flex items-center gap-3">
         <span className="font-condensed text-3xl font-bold tracking-tight text-carbon-black uppercase leading-none">
-          AI FOR BUSINESS
-        </span>
-        <span className="tag-mint">
-          live v2.4
+          DRISHTI AI
         </span>
       </div>
-
-      {/* Centered Floating White Nav Pill (48px Radius) */}
-      <nav className="nav-pill flex items-center gap-8 shadow-none border border-ash/30">
-        {['Solutions', 'Technology', 'Case Studies', 'Pricing'].map((item) => (
-          <button
-            key={item}
-            className="text-body font-medium text-slate hover:text-carbon-black transition-colors"
-          >
-            {item}
-          </button>
-        ))}
-      </nav>
 
       {/* Right Controls: Notification Pill + Primary Black Button (8px Radius) */}
       <div className="flex items-center gap-4">
@@ -124,11 +117,6 @@ export default function Header({ onNotificationClick }: HeaderProps) {
           </AnimatePresence>
         </div>
 
-        {/* Primary CTA Button (8px Radius, Solid Black Fill) */}
-        <button className="btn-primary">
-          <span>Schedule Demo</span>
-          <ArrowUpRight className="w-4 h-4 text-paper-white" />
-        </button>
       </div>
     </header>
   )

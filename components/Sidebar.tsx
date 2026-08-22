@@ -13,7 +13,10 @@ interface SidebarProps {
 const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, label: 'Overview' },
   { id: 'analysis', icon: Video, label: 'Analysis' },
-  { id: 'events', icon: FileSearch, label: 'Segments' },
+  // "Findings", not "Segments": this view lists individual offences, which is
+  // what a reviewer works through. The motion segments they sit inside are a
+  // pipeline concept and appear under Analysis.
+  { id: 'events', icon: FileSearch, label: 'Findings' },
 ]
 
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {

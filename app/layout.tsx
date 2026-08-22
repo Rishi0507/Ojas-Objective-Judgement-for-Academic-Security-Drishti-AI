@@ -7,8 +7,9 @@ const inter = Inter({ subsets: ['latin'], weight: ['400', '500'], variable: '--f
 const mono = Roboto_Mono({ subsets: ['latin'], weight: ['400'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'AI FOR BUSINESS — DRISHTI VISION',
-  description: 'AI-powered examination monitoring through advanced motion analysis and behavioral pattern detection',
+  title: 'DrishtiAI — Exam Hall Video Review',
+  description:
+    'Offline analysis of exam hall CCTV. Surfaces motion segments and reviewable findings with the frame and bounding box each one came from, for an invigilator to confirm or dismiss.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

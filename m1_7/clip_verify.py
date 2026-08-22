@@ -11,9 +11,21 @@ their own desk. Both are unmistakable in the image and invisible to the
 geometry.
 
 CLIP scores an image against candidate captions, so it can separate those
-cases. It is used to *annotate* findings with a second opinion, never to
-delete them — suppressing evidence without an audit trail is a worse failure
-mode for a surveillance tool than showing too much.
+cases.
+
+With --filter, findings CLIP contradicts are hidden from the reviewer's list.
+That is a deliberate product decision to trade some recall for precision, and
+it is implemented so the trade stays reversible: a suppressed finding is
+*marked*, never deleted, and keeps the caption and score that hid it. Nothing
+is removed from the file, so a wrong suppression can be seen and undone. This
+matters more than it sounds — a filter that silently erases evidence about a
+student is the one failure mode worth engineering against, because nobody can
+review what they cannot see.
+
+Only "contradicted" is suppressed. "unjudgeable" never is: a model that cannot
+tell must not be read as a denial, and on this footage the single prohibited
+object finding — the most important one in the video — came back at 0.33 with
+a margin of 0.01, which is a coin flip, not an acquittal.
 
 Two limits are enforced rather than hoped for:
 
@@ -205,6 +217,10 @@ def main():
     ap = argparse.ArgumentParser(description="CLIP-verify detected offences.")
     ap.add_argument("--pipeline-dir", required=True)
     ap.add_argument("--min-pixels", type=int, default=MIN_CROP_PIXELS)
+    ap.add_argument("--filter", action="store_true",
+                    help="Mark contradicted findings as suppressed so the UI hides them. "
+                         "Only 'contradicted' is suppressed - 'unjudgeable' never is, "
+                         "because a model that cannot tell must not be read as a denial.")
     args = ap.parse_args()
 
     root = Path(args.pipeline_dir)
@@ -218,7 +234,7 @@ def main():
     crops_dir.mkdir(parents=True, exist_ok=True)
 
     video_id = data.get("video_id", "")
-    checked = supported = contradicted = skipped = 0
+    checked = supported = contradicted = skipped = suppressed = 0
 
     for event in data.get("events", []):
         for off in (event.get("offences") or []):
@@ -295,6 +311,19 @@ def main():
                 supported += 1
             else:
                 contradicted += 1
+                if args.filter:
+                    # Marked, not deleted. The finding stays in the file with
+                    # the reason it was hidden, so a wrong suppression can be
+                    # seen and undone - a filter that silently erases evidence
+                    # about a student is the one failure mode worth engineering
+                    # against, since nobody can review what they cannot see.
+                    off["suppressed"] = True
+                    off["suppressedBy"] = "clip_verification"
+                    off["suppressedReason"] = (
+                        f"CLIP read this crop as \"{top['label']}\" "
+                        f"({top['score']:.2f}, margin {margin:.2f})"
+                    )
+                    suppressed += 1
             print(f"  {otype:18s} {off.get('trackId','-'):9s} {v.upper():12s} "
                   f"{top['score']:.2f}  \"{top['label'][:52]}\"")
 
@@ -306,6 +335,7 @@ def main():
         "supported": supported,
         "contradicted": contradicted,
         "skipped_unjudgeable": skipped,
+        "suppressed": suppressed,
         "written": str(enriched_path),
     }, indent=2))
 

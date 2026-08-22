@@ -4,6 +4,8 @@ import path from 'path'
 import { getCurrentPipelineDir } from '@/lib/currentVideo'
 import { createClient } from '@/lib/supabase/server'
 import { syncVerdict } from '@/lib/supabase/sync'
+import { appendEntry } from '@/lib/ledger/store'
+import { hashDocument } from '@/lib/ledger/hash'
 
 /**
  * Reviewer verdicts on individual offences.
@@ -60,14 +62,38 @@ export async function POST(request: NextRequest) {
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(verdicts, null, 2))
 
+    // Record the human decision in the custody chain.
+    //
+    // This is the entry that matters most. review.json is mutable by design -
+    // a reviewer can undo a verdict - so the file alone cannot show that an
+    // offence was confirmed and later quietly dismissed. The ledger can,
+    // because each decision is appended rather than overwritten, and a dispute
+    // over an exam result lands here rather than on the video hash.
+    let reviewerId: string | null = null
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getUser()
+      reviewerId = data.user?.id ?? null
+    } catch {
+      // local-only run - the verdict is still chained, just unattributed
+    }
+
+    const decision = { key, verdict: verdict ?? 'withdrawn' }
+    await appendEntry({
+      kind: 'verdict_recorded',
+      subject: key,
+      jobId: getCurrentPipelineDir(),
+      actorId: reviewerId,
+      payloadHash: hashDocument(decision),
+      payload: decision,
+    })
+
     // Mirror to Supabase so a verdict is attributed to a reviewer and survives
     // beyond this machine. The local file stays authoritative for rendering,
     // so an unconfigured or failing Supabase never blocks a review.
     try {
-      const supabase = createClient()
-      const { data } = await supabase.auth.getUser()
-      if (data.user) {
-        await syncVerdict(getCurrentPipelineDir(), data.user.id, key, verdict)
+      if (reviewerId) {
+        await syncVerdict(getCurrentPipelineDir(), reviewerId, key, verdict)
       }
     } catch {
       // local-only run
