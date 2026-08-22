@@ -109,10 +109,8 @@ const OFFENCE_STYLES: Record<string, { label: string; cls: string }> = {
   object_exchange: { label: 'Object Exchange', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
   loitering: { label: 'Loitering', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
   crowd_disturbance: { label: 'Crowd Disturbance', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  motion_anomaly: { label: 'Motion Anomaly', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   head_turn: { label: 'Head Turn', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   hand_gesture: { label: 'Hand Gesture', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
-  hand_proximity: { label: 'Hands Close', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 }
 
 const feedbackOptions = [
@@ -761,7 +759,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                       {off.snapshot ? (
                         <button
                           onClick={() => setLightbox(off.snapshot!)}
-                          className="flex-shrink-0 w-32 aspect-video rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
+                          className="flex-shrink-0 w-32 aspect-video rounded-md overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
                           title="Click to enlarge the auto-captured evidence"
                         >
                           <img
@@ -771,7 +769,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                           />
                         </button>
                       ) : (
-                        <div className="flex-shrink-0 w-32 aspect-video rounded border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                        <div className="flex-shrink-0 w-32 aspect-video rounded-md border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
                           No still captured
                         </div>
                       )}
