@@ -50,11 +50,6 @@ const (
 	// Requiring clear separation avoids firing on someone resting a hand.
 	handRaiseMargin = 0.15
 
-	// How close two people's wrists must come, in shoulder widths, to read as
-	// a possible hand-off. Median separation between different people's wrists
-	// on this footage is 8.1 shoulder widths and only 2% fall within 1.0, so
-	// this sits deep in the tail rather than at a plausible-sounding number.
-	handProximityThreshold = 0.8
 )
 
 // keypointIndex maps COCO joint names to their position in the array.
@@ -279,79 +274,6 @@ func detectHandGestures(track PersonTrack, poses []TrackedPose) []Offence {
 	return offences
 }
 
-// detectHandProximity reports two people's hands coming close together — the
-// physical shape of passing something.
-//
-// Requires the two wrists to be near each other, not merely one wrist inside
-// the other person's bounding box, which is what this previously tested. A box
-// is an axis-aligned rectangle containing a great deal of desk and empty air,
-// so in a hall where candidates sit shoulder to shoulder those boxes overlap
-// and a hand can be "inside" a neighbour without being anywhere near them.
-// Measured on this footage, 23% of all confidently-detected wrists fell inside
-// some other person's box purely from seating density — a quarter of every
-// hand in the room, which is why this fired 14 times in 88 seconds.
-//
-// Wrist-to-wrist separation separates the cases properly: its median is 8.1
-// shoulder widths and only 2% of pairs come within 1.0, so closeness here is
-// genuinely unusual rather than the default state of a crowded room.
-func detectHandProximity(track PersonTrack, poses []TrackedPose, posesByTrack map[string][]TrackedPose) []Offence {
-	var offences []Offence
-
-	for _, tp := range poses {
-		lSho, okL := joint(tp.Pose, "left_shoulder")
-		rSho, okR := joint(tp.Pose, "right_shoulder")
-		if !okL || !okR {
-			continue
-		}
-		shoulderWidth := math.Abs(lSho.X - rSho.X)
-		if shoulderWidth < 1 {
-			continue
-		}
-
-		for _, side := range []string{"left_wrist", "right_wrist"} {
-			wrist, ok := joint(tp.Pose, side)
-			if !ok {
-				continue
-			}
-
-			for otherID, otherPoses := range posesByTrack {
-				if otherID == track.TrackID {
-					continue
-				}
-				for _, otp := range otherPoses {
-					if otp.FrameIdx != tp.FrameIdx {
-						continue
-					}
-					for _, oside := range []string{"left_wrist", "right_wrist"} {
-						ow, ook := joint(otp.Pose, oside)
-						if !ook {
-							continue
-						}
-						gap := math.Hypot(wrist.X-ow.X, wrist.Y-ow.Y) / shoulderWidth
-						if gap > handProximityThreshold {
-							continue
-						}
-						offences = append(offences, Offence{
-							Type:       "hand_proximity",
-							Label:      fmt.Sprintf("Hands close to %s — possible hand-off", otherID),
-							TrackID:    track.TrackID,
-							StartSec:   tp.TimestampSec,
-							EndSec:     tp.TimestampSec,
-							FrameIdx:   tp.FrameIdx,
-							Confidence: math.Min(wrist.Conf, ow.Conf),
-							Count:      2,
-						})
-						return offences // one report per person is enough
-					}
-					break
-				}
-			}
-		}
-	}
-
-	return offences
-}
-
 // TrackedPose is one person's skeleton at one moment, already associated
 // with a track so findings can be attributed to a specific individual.
 type TrackedPose struct {
@@ -370,7 +292,6 @@ func analyseMicroMotions(tracks []PersonTrack, posesByTrack map[string][]Tracked
 		}
 		offences = append(offences, detectHeadTurns(track, poses)...)
 		offences = append(offences, detectHandGestures(track, poses)...)
-		offences = append(offences, detectHandProximity(track, poses, posesByTrack)...)
 	}
 	return offences
 }

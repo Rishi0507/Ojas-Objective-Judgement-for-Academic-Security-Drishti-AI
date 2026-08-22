@@ -131,7 +131,7 @@ type BBox struct {
 // investigator actually reviews. An event says "something happened here";
 // an offence says what, when, to whom, and points at the still that proves it.
 type Offence struct {
-	Type        string  `json:"type"`  // prohibited_object | loitering | crowd_disturbance | object_exchange | motion_anomaly
+	Type        string  `json:"type"`  // prohibited_object | object_exchange | loitering | crowd_disturbance | head_turn | hand_gesture
 	Label       string  `json:"label"` // human-readable summary
 	TrackID     string  `json:"trackId,omitempty"`
 	StartSec    float64 `json:"startSec"`

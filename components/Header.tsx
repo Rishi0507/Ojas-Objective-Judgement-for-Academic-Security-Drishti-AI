@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Bell, User } from 'lucide-react'
+import { Bell, Eye, ArrowUpRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface HeaderProps {
@@ -32,27 +32,42 @@ export default function Header({ onNotificationClick }: HeaderProps) {
   }, [])
 
   return (
-    <header className="h-16 bg-card border-b border-border px-6 flex items-center justify-between">
-      <div className="flex-1 max-w-2xl">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" strokeWidth={2} />
-          <input
-            type="text"
-            placeholder="Search offences, segments, videos..."
-            className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-muted-foreground transition-colors"
-          />
-        </div>
+    <header className="h-32 px-8 bg-warm-canvas font-sans text-body select-none flex items-center justify-between">
+      {/* Wordmark in Uppercase Condensed */}
+      <div className="flex items-center gap-3">
+        <span className="font-condensed text-3xl font-bold tracking-tight text-carbon-black uppercase leading-none">
+          AI FOR BUSINESS
+        </span>
+        <span className="tag-mint">
+          live v2.4
+        </span>
       </div>
 
-      <div className="flex items-center gap-4 ml-6">
+      {/* Centered Floating White Nav Pill (48px Radius) */}
+      <nav className="nav-pill flex items-center gap-8 shadow-none border border-ash/30">
+        {['Solutions', 'Technology', 'Case Studies', 'Pricing'].map((item) => (
+          <button
+            key={item}
+            className="text-body font-medium text-slate hover:text-carbon-black transition-colors"
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+
+      {/* Right Controls: Notification Pill + Primary Black Button (8px Radius) */}
+      <div className="flex items-center gap-4">
         <div className="relative">
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2.5 hover:bg-accent rounded-lg transition-colors"
+            className="btn-ghost py-2.5 px-4 text-body font-medium flex items-center gap-2 border-slate"
           >
-            <Bell className="w-5 h-5 text-muted-foreground" strokeWidth={2} />
+            <Bell className="w-4 h-4 text-carbon-black" strokeWidth={1.5} />
+            <span>Alerts</span>
             {unreviewedEvents.length > 0 && (
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full" />
+              <span className="px-2 py-0.5 text-xs bg-voltage-yellow text-black font-mono font-bold rounded-full">
+                {unreviewedEvents.length}
+              </span>
             )}
           </button>
 
@@ -64,21 +79,22 @@ export default function Header({ onNotificationClick }: HeaderProps) {
                   onClick={() => setShowNotifications(false)}
                 />
                 <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-80 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.1 }}
+                  className="absolute right-0 mt-2 w-80 bg-paper-white text-carbon-black rounded-[24px] z-50 overflow-hidden text-body-sm shadow-none border border-ash/50"
                 >
-                  <div className="p-4 border-b border-border bg-muted/30">
-                    <h3 className="font-semibold text-foreground">Notifications</h3>
+                  <div className="p-4 bg-mist-gray flex items-center justify-between">
+                    <span className="font-condensed text-xl font-bold uppercase tracking-tight">System Events</span>
+                    <span className="font-mono text-xs text-smoke">{unreviewedEvents.length} Pending</span>
                   </div>
                   {unreviewedEvents.length > 0 ? (
                     <div className="max-h-[300px] overflow-y-auto">
                       {unreviewedEvents.map((ev, i) => (
                         <div 
                           key={ev.id || i} 
-                          className="p-4 border-b border-border hover:bg-accent/50 transition-colors cursor-pointer"
+                          className="p-4 border-b border-mist-gray hover:bg-warm-canvas/60 transition-colors cursor-pointer"
                           onClick={() => {
                             if (ev.id && onNotificationClick) {
                               onNotificationClick(ev.id)
@@ -87,20 +103,19 @@ export default function Header({ onNotificationClick }: HeaderProps) {
                           }}
                         >
                           <div className="flex items-start justify-between mb-1">
-                            <span className="font-medium text-sm text-red-600">{ev.primary_label || 'Offence Detected'}</span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="font-bold text-carbon-black uppercase text-sm">{ev.primary_label || 'Offence Detected'}</span>
+                            <span className="font-mono text-xs text-smoke">
                               {Math.floor(ev.start / 60)}:{(Math.floor(ev.start) % 60).toString().padStart(2, '0')}
                             </span>
                           </div>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{ev.summary || 'Unreviewed activity requires your attention.'}</p>
+                          <p className="text-slate text-xs line-clamp-2">{ev.summary || 'Unreviewed anomaly.'}</p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center flex flex-col items-center">
-                      <Bell className="w-8 h-8 text-muted-foreground/30 mb-3" />
-                      <p className="text-sm font-medium text-foreground">All caught up!</p>
-                      <p className="text-xs text-muted-foreground mt-1">Check back later for new alerts.</p>
+                    <div className="p-6 text-center text-smoke">
+                      <Eye className="w-5 h-5 mx-auto mb-2 text-ash" />
+                      <p className="font-bold text-carbon-black text-xs uppercase">No active alerts</p>
                     </div>
                   )}
                 </motion.div>
@@ -108,14 +123,11 @@ export default function Header({ onNotificationClick }: HeaderProps) {
             )}
           </AnimatePresence>
         </div>
-        
-        <div className="h-8 w-px bg-border" />
-        
-        <button className="flex items-center gap-3 px-3 py-2 hover:bg-accent rounded-lg transition-colors">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <User className="w-4 h-4 text-primary-foreground" strokeWidth={2.5} />
-          </div>
-          <span className="text-sm font-medium">Investigator</span>
+
+        {/* Primary CTA Button (8px Radius, Solid Black Fill) */}
+        <button className="btn-primary">
+          <span>Schedule Demo</span>
+          <ArrowUpRight className="w-4 h-4 text-paper-white" />
         </button>
       </div>
     </header>

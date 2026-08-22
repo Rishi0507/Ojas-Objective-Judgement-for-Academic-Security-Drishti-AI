@@ -20,6 +20,13 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 	// meaningless (every event had its own unrelated "Track-01").
 	tracker := NewByteTracker()
 
+	// Real (downscaled) frame size — detections are in this space, not the
+	// source resolution recorded in header.json.
+	procW, procH := frameDimensions(framesDir, header.VideoID)
+	if procW == 0 || procH == 0 {
+		procW, procH = header.Width, header.Height
+	}
+
 	// Build frame index lookup for ROIs (if available)
 	frameROIsMap := make(map[int]FrameROIs)
 	if roisData != nil {
@@ -52,7 +59,7 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 		// Run person detection and tracking (Module 8)
 		var eventPoses map[string][]TrackedPose
 		if detector != nil {
-			personTracks, poseFrames := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir, tracker)
+			personTracks, poseFrames := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir, tracker, procW, procH)
 			enrichedEvent.PersonTracks = personTracks
 			eventPoses = assignPosesToTracks(personTracks, poseFrames)
 		} else {
@@ -63,7 +70,7 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 		// Run object detection (Module 9)
 		if detector != nil {
 			snapshotDir := filepath.Join(outDir, "snapshots")
-			objectDetections := detectObjects(event, eventFrames, framesDir, header.VideoID, detector, header, enrichedEvent.PersonTracks, snapshotDir)
+			objectDetections := detectObjects(event, eventFrames, framesDir, header.VideoID, detector, header, enrichedEvent.PersonTracks, snapshotDir, procW, procH)
 			enrichedEvent.ObjectDetections = objectDetections
 		} else {
 			// Mock mode: generate fake object detections
@@ -153,7 +160,7 @@ func getFrameROIs(eventFrames []FrameROIs, frameIdx int) (FrameROIs, bool) {
 }
 
 // detectAndTrackPersons runs person detection and ByteTrack-style tracking
-func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string, tracker *ByteTracker) ([]PersonTrack, []PoseFrame) {
+func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string, tracker *ByteTracker, procW, procH int) ([]PersonTrack, []PoseFrame) {
 	if detector == nil {
 		// Mock mode - generate realistic person tracks
 		return generateMockPersonTracks(event, eventFrames), nil
@@ -224,7 +231,7 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 		}
 
 		// Save annotated frame if there is anything worth boxing.
-		shown := relevantDetections(detections)
+		shown := relevantDetections(detections, procW, procH)
 		if len(shown) > 0 {
 			annotatedPath := filepath.Join(annotatedDir, fmt.Sprintf("annotated_frame_%07d.jpg", frameIdx))
 			if err := detector.AnnotateFrame(framePath, shown, annotatedPath); err != nil {
@@ -306,7 +313,7 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 }
 
 // detectObjects runs object detection (phone, paper, etc.)
-func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, personTracks []PersonTrack, snapshotDir string) []ObjectDetection {
+func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, personTracks []PersonTrack, snapshotDir string, procW, procH int) []ObjectDetection {
 	if detector == nil {
 		// Mock mode
 		return generateMockObjectDetections(Event{}, eventFrames)
@@ -364,6 +371,11 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 			if !isProhibitedObject(det.ClassName) || det.Confidence < prohibitedMinConfidence {
 				continue
 			}
+			if isOverlayArtifact(det, procW, procH) {
+				log.Printf("[INFO] Rejected %s at %v — overlay text or implausible geometry",
+					det.ClassName, det.BBox)
+				continue
+			}
 			prohibited = append(prohibited, det)
 			objectBBoxes[det.ClassName] = append(objectBBoxes[det.ClassName], BBox{
 				FrameIdx:     frameIdx,
@@ -384,7 +396,7 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 			shot := filepath.Join(snapshotDir,
 				fmt.Sprintf("event%d_f%07d.jpg", event.EventID, frameIdx))
 			if _, err := os.Stat(shot); os.IsNotExist(err) {
-				if err := detector.AnnotateFrame(framePath, relevantDetections(allDetections), shot); err != nil {
+				if err := detector.AnnotateFrame(framePath, relevantDetections(allDetections, procW, procH), shot); err != nil {
 					log.Printf("[WARN] snapshot failed for frame %d: %v", frameIdx, err)
 				}
 			}
@@ -491,6 +503,93 @@ var prohibitedObjects = map[string]string{
 // an offence claim is held to a higher bar than mere presence.
 const prohibitedMinConfidence = 0.35
 
+const (
+	// Fraction of frame height at the top and bottom occupied by the camera's
+	// burned-in overlay — timestamp along the top, camera label bottom-right.
+	// That text is part of the pixels, so a detector cannot tell it from scene
+	// content: a bright high-contrast rectangle on a dark strip reads as a lit
+	// phone screen. Observed directly, a single digit of "09:30:52" was
+	// reported as a mobile phone at 0.62 confidence.
+	osdTopFraction    = 0.10
+	osdBottomFraction = 0.08
+
+	// Anything smaller than this cannot be a handheld object at the scale
+	// these frames are processed at.
+	minProhibitedArea = 250.0
+
+	// Squareness rules out a phone, which is elongated in either orientation
+	// (~0.4-0.7 upright, ~1.4-2.5 on its side) — the timestamp glyph that
+	// triggered this was 17x18px, essentially square. It deliberately does NOT
+	// apply to paper: a folded chit seen from above is often roughly square,
+	// so the same rule would discard exactly the object hardest to detect.
+	phoneSquareLowAR  = 0.80
+	phoneSquareHighAR = 1.25
+)
+
+// frameDimensions reads the real pixel size of the sampled frames.
+//
+// header.json carries the SOURCE resolution, but Module 2 downscales frames
+// for processing and every detection coordinate is in that smaller space.
+// Deriving overlay bands from the source size would size them against the
+// wrong frame — a 10% band computed on 720px applied to a 360px frame masks a
+// fifth of the image. Decoding one frame header is cheap and exact.
+func frameDimensions(framesDir, videoID string) (int, int) {
+	matches, err := filepath.Glob(filepath.Join(framesDir, fmt.Sprintf("%s__f*__t*.jpg", videoID)))
+	if err != nil || len(matches) == 0 {
+		return 0, 0
+	}
+	f, err := os.Open(matches[0])
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
+}
+
+// isOverlayArtifact rejects a detection that sits in the camera's burned-in
+// text bands, or whose geometry does not resemble the object claimed.
+//
+// Both tests are deliberately cheap and deterministic. A model-based verifier
+// would also reject this, but paying for inference to discard something that
+// position and aspect ratio already rule out is the wrong order of operations.
+func isOverlayArtifact(det Detection, frameW, frameH int) bool {
+	if frameH <= 0 || frameW <= 0 {
+		return false
+	}
+
+	b := det.BBox
+	w := float64(b.Dx())
+	h := float64(b.Dy())
+	if w <= 0 || h <= 0 {
+		return true
+	}
+
+	// Sitting inside the overlay bands.
+	topBand := float64(frameH) * osdTopFraction
+	bottomBand := float64(frameH) * (1 - osdBottomFraction)
+	if float64(b.Max.Y) <= topBand || float64(b.Min.Y) >= bottomBand {
+		return true
+	}
+
+	// Too small to be a real handheld object at this scale.
+	if w*h < minProhibitedArea {
+		return true
+	}
+
+	// Near-square: a glyph rather than a device. Phones only — see above.
+	if det.ClassName == "cell phone" {
+		if ar := w / h; ar > phoneSquareLowAR && ar < phoneSquareHighAR {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isProhibitedObject(className string) bool {
 	_, ok := prohibitedObjects[className]
 	return ok
@@ -500,14 +599,17 @@ func isProhibitedObject(className string) bool {
 // and prohibited items. YOLO also reports chairs, monitors, desks and similar
 // exam-hall furniture, and drawing boxes around those buries the one detection
 // that actually matters.
-func relevantDetections(dets []Detection) []Detection {
+func relevantDetections(dets []Detection, frameW, frameH int) []Detection {
 	out := make([]Detection, 0, len(dets))
 	for _, d := range dets {
 		if d.ClassName == "person" {
 			out = append(out, d)
 			continue
 		}
-		if isProhibitedObject(d.ClassName) && d.Confidence >= prohibitedMinConfidence {
+		// Same guard as the offence path: an overlay glyph must not be boxed
+		// as a phone in the evidence still either.
+		if isProhibitedObject(d.ClassName) && d.Confidence >= prohibitedMinConfidence &&
+			!isOverlayArtifact(d, frameW, frameH) {
 			out = append(out, d)
 		}
 	}
@@ -778,20 +880,11 @@ func classifyOffences(event Event, ev EnrichedEvent, outDir string, posesByTrack
 	// ---- crowd-level simultaneous movement ----
 	offences = append(offences, detectCrowdDisturbance(ev.PersonTracks, crowdMinPersons)...)
 
-	// ---- motion anomaly (abrupt, non-periodic activity spike) ----
-	// Module 3's spectral-residual jerk score already isolates sudden motion
-	// against the near-static baseline of an exam hall; surface it as an
-	// offence rather than leaving it as a bare metric.
-	if event.MotionCharacter == "sudden" && event.PeakJerkScore > 0 {
-		offences = append(offences, Offence{
-			Type:       "motion_anomaly",
-			Label:      fmt.Sprintf("Sudden activity spike (jerk %.2f)", event.PeakJerkScore),
-			StartSec:   event.Start,
-			EndSec:     event.End,
-			FrameIdx:   event.StartFrameIdx,
-			Confidence: event.PeakJerkScore,
-		})
-	}
+	// Motion anomaly is deliberately not reported as an offence. The jerk
+	// score describes a segment's motion character, not anyone's conduct, and
+	// in practice it fired hardest on the decoder recovering from the
+	// undecodable frames at t=0 — an artefact of the recording, not behaviour.
+	// The score remains on the event for ranking and filtering.
 
 	// Attach any auto-captured still that matches the offence's frame.
 	snapshotDir := filepath.Join(outDir, "snapshots")
@@ -845,6 +938,14 @@ func renderOffenceStills(ev *EnrichedEvent, detector *YOLODetector, framesDir, v
 			continue // track wasn't observed on that exact frame
 		}
 
+		// Record the subject's box on the offence itself. Pose-derived
+		// findings carried no bbox, which left any downstream verifier with
+		// only a full-frame still — and a model asked to judge a whole
+		// exam hall cannot say anything about one person in it.
+		if len(off.BBox) != 4 {
+			off.BBox = subject
+		}
+
 		pattern := filepath.Join(framesDir, fmt.Sprintf("%s__f%07d__t*.jpg", videoID, off.FrameIdx))
 		matches, err := filepath.Glob(pattern)
 		if err != nil || len(matches) == 0 {
@@ -871,8 +972,6 @@ func offenceDisplayName(t string) string {
 		return "Loitering"
 	case "crowd_disturbance":
 		return "Crowd Disturbance"
-	case "motion_anomaly":
-		return "Motion Anomaly"
 	case "head_turn":
 		return "Head Turn"
 	case "hand_gesture":

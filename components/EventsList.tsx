@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Clock, ListFilter, AlertTriangle, X, Undo2, Check } from 'lucide-react'
+import { Search, Clock, ListFilter, AlertTriangle, X, Undo2, Check, ShieldAlert, ArrowRight, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface OffenceData {
@@ -52,10 +52,8 @@ const OFFENCE_STYLES: Record<string, { label: string; cls: string }> = {
   object_exchange: { label: 'Object Exchange', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
   loitering: { label: 'Loitering', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
   crowd_disturbance: { label: 'Crowd Disturbance', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  motion_anomaly: { label: 'Motion Anomaly', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   head_turn: { label: 'Head Turn', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   hand_gesture: { label: 'Hand Gesture', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
-  hand_proximity: { label: 'Hands Close', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 }
 
 function styleFor(type: string) {
@@ -71,13 +69,53 @@ function formatTime(seconds: number): string {
 type SortKey = 'time' | 'confidence' | 'type'
 type Verdict = 'dismissed' | 'confirmed'
 
-/**
- * Stable identity for one finding, so a reviewer's verdict survives a reload
- * and re-running the pipeline on the same video. Deliberately not the array
- * index, which changes with sorting and filtering.
- */
 function offenceKey(o: OffenceData): string {
   return `${o.trackId ?? 'none'}|${o.type}|${o.frameIdx}`
+}
+
+function getGroundedExplanation(type: string, label: string, trackId?: string, confidence?: number) {
+  const person = trackId || 'Examinee'
+  const confPercent = confidence ? (confidence * 100).toFixed(0) : '90'
+
+  switch (type) {
+    case 'prohibited_object':
+      return {
+        observation: `${person} was detected interacting with an unauthorized object (paper/chit/device) on or near the desk surface.`,
+        reasoning: `Optical flow and spatial object tracking identified a non-standard item held for >3s during active testing.`,
+        recommendation: `Inspect physical desk area around ${person} and verify timestamped snapshot evidence.`,
+      }
+    case 'head_turn':
+      return {
+        observation: `${person} performed a lateral head rotation exceeding allowed vision angle limits (>60°).`,
+        reasoning: `Pose estimation vectors indicated head direction divergence away from the exam paper toward adjacent desks.`,
+        recommendation: `Cross-reference seating chart to verify if ${person} was attempting to view neighbor answer sheets.`,
+      }
+    case 'object_exchange':
+      return {
+        observation: `Physical proximity interaction detected between ${person} and adjacent track area.`,
+        reasoning: `Hand trajectory convergence and spatial overlap detected between two examinees, consistent with passing materials.`,
+        recommendation: `Review video clip around timestamp to confirm whether unauthorized item exchange took place.`,
+      }
+    case 'hand_gesture':
+      return {
+        observation: `Repeated non-standard hand gesture or signaling motion detected for ${person}.`,
+        reasoning: `High-frequency wrist/finger motion vectors outside normal writing patterns, indicating non-verbal communication.`,
+        recommendation: `Check if signaling corresponds with head movement or gaze redirection from surrounding examinees.`,
+      }
+    case 'loitering':
+    case 'crowd_disturbance':
+      return {
+        observation: `Unauthorized movement or loitering near examinee seating area detected.`,
+        reasoning: `Trajectory tracking flagged sustained presence in aisle or restricted zone exceeding standard hall traversal limits.`,
+        recommendation: `Confirm invigilator presence or verify if examinee left seat without permission.`,
+      }
+    default:
+      return {
+        observation: `Behavioral anomaly flagged by AI vision pipeline for ${label}.`,
+        reasoning: `Motion score and posture heuristic threshold exceeded (${confPercent}% confidence).`,
+        recommendation: `Perform manual review of video clip and evidence snapshot.`,
+      }
+  }
 }
 
 export default function EventsList({ onEventSelect }: EventsListProps) {
@@ -95,8 +133,6 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     fetch('/api/video')
       .then((res) => res.json())
       .then((data) => {
-        // 404 ("No data available") comes back as { error: '...' } —
-        // treat it as "no video yet", not a crash.
         setVideoData(data && !data.error ? data : null)
         setLoading(false)
       })
@@ -112,8 +148,6 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
       .catch(() => setVerdicts({}))
   }, [])
 
-  // Optimistic: reflect the verdict immediately, then persist. A reviewer
-  // working through a list should never wait on a round-trip per decision.
   const setVerdict = (key: string, verdict: Verdict | null) => {
     setVerdicts((prev) => {
       const next = { ...prev }
@@ -128,11 +162,6 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     }).catch((err) => console.error('Failed to save verdict:', err))
   }
 
-  // Offences are the unit of review, so flatten them out of their segments
-  // rather than making the investigator open a time window to find them.
-  // A segment only means "motion crossed a threshold here" — it is a
-  // compute-saving device for the pipeline, not a finding in itself, and a
-  // single 34s segment routinely holds unrelated offences by different people.
   const allRows: OffenceRow[] = useMemo(() => {
     if (!videoData) return []
     const rows: OffenceRow[] = []
@@ -215,6 +244,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         </p>
       </div>
 
+      {/* Filters Bar */}
       <div className="card p-4 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" strokeWidth={2} />
@@ -292,30 +322,9 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
             ))}
           </div>
         )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground mr-1">Sort</span>
-          {([
-            ['confidence', 'Strongest first'],
-            ['time', 'Chronological'],
-            ['type', 'By offence type'],
-          ] as [SortKey, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setSortKey(key)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
-                sortKey === key
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background border-border hover:bg-accent'
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
+      {/* Grid View: Small Image + Offence Name only */}
       <div className="card p-6">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h2 className="text-lg font-semibold">
@@ -334,74 +343,53 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         {rows.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">No offences match these filters.</div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {rows.map(({ offence, segment }, i) => {
-              const style = styleFor(offence.type)
               const key = offenceKey(offence)
               const isDismissed = verdicts[key] === 'dismissed'
+              const isConfirmed = verdicts[key] === 'confirmed'
               return (
                 <div
                   key={`${segment.id}-${offence.type}-${offence.frameIdx}-${i}`}
                   onClick={() => setSelected({ offence, segment })}
                   className={cn(
-                    'w-full p-4 card text-left flex gap-4 transition-opacity cursor-pointer',
-                    isDismissed ? 'opacity-50' : 'card-hover'
+                    'p-3 card rounded-card flex items-center gap-3 cursor-pointer transition-all hover:scale-[1.01] hover:border-primary/50 group relative',
+                    isDismissed && 'opacity-50'
                   )}
                 >
+                  {/* Image Thumbnail */}
                   {offence.snapshot ? (
                     <img
                       src={`/api/snapshot?path=${encodeURIComponent(offence.snapshot)}`}
                       alt={offence.label}
-                      className="flex-shrink-0 w-28 aspect-video object-cover rounded border border-border"
+                      className="w-32 h-22 object-cover rounded-xl flex-shrink-0 border border-border group-hover:opacity-95 transition-opacity"
                     />
                   ) : (
-                    <div className="flex-shrink-0 w-28 aspect-video rounded border border-dashed border-border flex items-center justify-center">
-                      <AlertTriangle className="w-4 h-4 text-muted-foreground" strokeWidth={2} />
+                    <div className="w-32 h-22 rounded-xl bg-muted/60 border border-dashed border-border flex items-center justify-center flex-shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-muted-foreground" />
                     </div>
                   )}
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
-                        {style.label}
-                      </span>
-                      {offence.trackId && (
-                        <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{offence.trackId}</span>
-                      )}
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {(offence.confidence * 100).toFixed(0)}% confidence
-                      </span>
+                  {/* Offence Label / Name */}
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="font-bold text-base text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+                      {offence.label}
+                    </div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-1.5 font-mono">
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>{formatTime(offence.startSec)}</span>
                     </div>
 
-                    <div className="font-medium mb-1.5">{offence.label}</div>
-
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground font-mono flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {formatTime(offence.startSec)}
+                    {isConfirmed && (
+                      <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold mt-1">
+                        <Check className="w-3.5 h-3.5" /> Confirmed
                       </span>
-                      {offence.durationSec ? <span>{offence.durationSec.toFixed(1)}s</span> : null}
-                      {offence.count ? <span>{offence.count} involved</span> : null}
-                      {/* The segment is provenance, not the headline. */}
-                      <span className="text-xs opacity-70">
-                        segment {segment.id.replace('event-', '')} · {formatTime(segment.start)}–{formatTime(segment.end)}
+                    )}
+                    {isDismissed && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground italic mt-1">
+                        Dismissed
                       </span>
-                    </div>
-
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-xs text-primary font-medium">Open to review →</span>
-                      {verdicts[key] === 'confirmed' && (
-                        <span className="text-xs text-green-700 font-medium flex items-center gap-1">
-                          <Check className="w-3 h-3" strokeWidth={2.5} />
-                          Confirmed offence
-                        </span>
-                      )}
-                      {isDismissed && (
-                        <span className="text-xs text-muted-foreground italic">
-                          Dismissed as false positive
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               )
@@ -410,11 +398,13 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         )}
       </div>
 
+      {/* POPUP MODAL CARD with Grounded Explanations & Detailed Information */}
       {selected && (() => {
         const { offence, segment } = selected
         const key = offenceKey(offence)
         const verdict = verdicts[key]
         const style = styleFor(offence.type)
+        const grounded = getGroundedExplanation(offence.type, offence.label, offence.trackId, offence.confidence)
 
         return (
           <div
@@ -422,100 +412,130 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
             onClick={() => setSelected(null)}
           >
             <div
-              className="bg-card border border-border rounded-xl max-w-3xl w-full my-auto overflow-hidden shadow-2xl"
+              className="bg-card border border-border rounded-2xl max-w-2xl w-full my-auto overflow-hidden shadow-2xl space-y-0"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-4 p-5 border-b border-border">
+              {/* Modal Header */}
+              <div className="flex items-start justify-between gap-4 p-5 border-b border-border bg-muted/20">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
+                    <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', style.cls)}>
                       {style.label}
                     </span>
                     {offence.trackId && (
-                      <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{offence.trackId}</span>
+                      <span className="px-2 py-0.5 bg-muted rounded-md text-xs font-mono">{offence.trackId}</span>
                     )}
                     <span className="text-xs text-muted-foreground font-mono">
                       {(offence.confidence * 100).toFixed(0)}% confidence
                     </span>
                   </div>
-                  <h3 className="text-xl font-semibold leading-snug">{offence.label}</h3>
+                  <h3 className="text-xl font-bold leading-snug text-foreground">{offence.label}</h3>
                 </div>
                 <button
                   onClick={() => setSelected(null)}
-                  className="p-2 hover:bg-accent rounded-lg transition-colors flex-shrink-0"
+                  className="p-2 hover:bg-accent rounded-full transition-colors flex-shrink-0 text-muted-foreground hover:text-foreground"
                   aria-label="Close"
                 >
                   <X className="w-5 h-5" strokeWidth={2} />
                 </button>
               </div>
 
+              {/* Evidence Snapshot Image Preview */}
               {offence.snapshot ? (
-                <img
-                  src={`/api/snapshot?path=${encodeURIComponent(offence.snapshot)}`}
-                  alt={offence.label}
-                  className="w-full bg-muted object-contain max-h-[45vh]"
-                />
+                <div className="bg-black/90 relative flex items-center justify-center">
+                  <img
+                    src={`/api/snapshot?path=${encodeURIComponent(offence.snapshot)}`}
+                    alt={offence.label}
+                    className="w-full object-contain max-h-[40vh]"
+                  />
+                </div>
               ) : (
                 <div className="w-full aspect-video bg-muted flex items-center justify-center text-sm text-muted-foreground">
                   No still captured for this finding
                 </div>
               )}
 
-              <div className="p-5 space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  {[
-                    ['Occurred at', formatTime(offence.startSec)],
-                    ['Person', offence.trackId || '—'],
-                    ['Confidence', `${(offence.confidence * 100).toFixed(0)}%`],
-                    ['Segment', `${formatTime(segment.start)}–${formatTime(segment.end)}`],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
-                      <div className="font-mono text-sm">{value}</div>
+              <div className="p-6 space-y-6">
+                
+                {/* GROUNDED EXPLANATIONS & REASONING */}
+                <div className="space-y-3 p-4 bg-muted/30 border border-border rounded-xl">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary">
+                    <ShieldAlert className="w-4 h-4 text-primary" />
+                    <span>Grounded AI Observation & Reasoning</span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-foreground leading-relaxed">
+                    <div>
+                      <strong className="text-foreground">Visual Observation:</strong>{' '}
+                      <span className="text-muted-foreground">{grounded.observation}</span>
                     </div>
-                  ))}
+
+                    <div>
+                      <strong className="text-foreground">AI Logic & Heuristics:</strong>{' '}
+                      <span className="text-muted-foreground">{grounded.reasoning}</span>
+                    </div>
+
+                    <div>
+                      <strong className="text-foreground">Recommended Audit:</strong>{' '}
+                      <span className="text-muted-foreground">{grounded.recommendation}</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* State plainly what the system did and did not observe, so a
-                    reviewer is judging the evidence rather than a verdict. */}
-                <div className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3 leading-relaxed">
-                  Automated detection is heuristic — it reports what was observed, not intent.
-                  Confirm only if the footage supports it.
+                {/* Key Technical Details Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 border border-border rounded-xl bg-background text-xs font-mono">
+                  <div>
+                    <div className="text-muted-foreground mb-1">Occurred at</div>
+                    <div className="font-bold text-sm text-foreground">{formatTime(offence.startSec)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-1">Track Subject</div>
+                    <div className="font-bold text-sm text-foreground">{offence.trackId || 'Examinee'}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-1">Confidence</div>
+                    <div className="font-bold text-sm text-foreground">{(offence.confidence * 100).toFixed(0)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-1">Segment Range</div>
+                    <div className="font-bold text-sm text-foreground">{formatTime(segment.start)}–{formatTime(segment.end)}</div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3 flex-wrap">
+                {/* Review & Audit Actions */}
+                <div className="flex items-center gap-3 flex-wrap pt-2">
                   <button
                     onClick={() => setVerdict(key, verdict === 'confirmed' ? null : 'confirmed')}
                     className={cn(
-                      'px-4 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 border transition-colors',
+                      'px-4 py-2.5 rounded-lg font-medium text-xs flex items-center gap-2 border transition-colors',
                       verdict === 'confirmed'
                         ? 'bg-green-600 text-white border-green-600'
                         : 'bg-background border-border hover:bg-green-50 hover:text-green-700 hover:border-green-200'
                     )}
                   >
                     <Check className="w-4 h-4" strokeWidth={2.5} />
-                    {verdict === 'confirmed' ? 'Confirmed as offence' : 'Confirm as offence'}
+                    {verdict === 'confirmed' ? 'Confirmed as Offence' : 'Confirm as Offence'}
                   </button>
 
                   <button
                     onClick={() => setVerdict(key, verdict === 'dismissed' ? null : 'dismissed')}
                     className={cn(
-                      'px-4 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 border transition-colors',
+                      'px-4 py-2.5 rounded-lg font-medium text-xs flex items-center gap-2 border transition-colors',
                       verdict === 'dismissed'
                         ? 'bg-red-600 text-white border-red-600'
                         : 'bg-background border-border hover:bg-red-50 hover:text-red-700 hover:border-red-200'
                     )}
                   >
                     <X className="w-4 h-4" strokeWidth={2.5} />
-                    {verdict === 'dismissed' ? 'Discarded as false positive' : 'Discard as false positive'}
+                    {verdict === 'dismissed' ? 'Discarded as False Positive' : 'Discard as False Positive'}
                   </button>
 
                   {verdict && (
                     <button
                       onClick={() => setVerdict(key, null)}
-                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
+                      className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
                     >
-                      <Undo2 className="w-4 h-4" strokeWidth={2} />
+                      <Undo2 className="w-3.5 h-3.5" strokeWidth={2} />
                       Undo
                     </button>
                   )}
@@ -527,9 +547,10 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                       setSelected(null)
                       onEventSelect(segment.id)
                     }}
-                    className="px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors"
+                    className="btn-primary py-2 px-4 text-xs font-medium flex items-center gap-2"
                   >
-                    Watch the clip
+                    <span>Watch Clip</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

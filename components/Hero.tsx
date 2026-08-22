@@ -1,13 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ArrowRight, Shield, Zap, Target, Eye } from 'lucide-react'
+import { ArrowUpRight, Zap, Shield, Target } from 'lucide-react'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 
-const features = [
-  { icon: Zap, label: 'Real-time Processing', desc: '<100ms latency' },
-  { icon: Shield, label: 'Privacy Focused', desc: 'No facial recognition' },
-  { icon: Target, label: 'High Accuracy', desc: '99.2% detection rate' },
+const useCases = [
+  { icon: Zap, tag: 'optical flow', title: 'REAL-TIME MOTION SCORING', desc: 'Sub-100ms inference latency across high-resolution CCTV streams.' },
+  { icon: Shield, tag: 'privacy', title: 'ZERO FACIAL BIOMETRICS', desc: 'No biometric data stored. Pure behavioral trajectory tracking.' },
+  { icon: Target, tag: 'auditability', title: 'HEURISTIC POSTURE LOGGING', desc: '99.2% high-confidence anomaly capture rate on examinee posture.' },
 ]
 
 interface HeroProps {
@@ -16,81 +16,144 @@ interface HeroProps {
 
 export default function Hero({ onLaunch }: HeroProps) {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-20 relative overflow-hidden">
-      <div className="max-w-6xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-12"
-        >
-          <div className="pill-badge inline-flex items-center gap-2 mb-10">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--accent)' }} />
-            <span className="text-body-sm uppercase">AI-Powered Video Analytics</span>
-          </div>
-
-          <h1 className="mb-8">
-            <span className="block text-[64px] md:text-[88px] leading-[1.05] tracking-[-0.02em] uppercase">
-              Drishti
-            </span>
-            <span className="block text-heading-lg mt-3 uppercase text-muted-foreground">
-              Intelligent Vision System
-            </span>
-          </h1>
-
-          <p className="prose-voice text-[15px] text-muted-foreground max-w-xl mx-auto mb-12 leading-[1.4] normal-case">
-            Advanced examination monitoring with behavioral pattern detection and real-time motion analysis
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-            <button
-              onClick={onLaunch}
-              className="ghost-pill flex items-center gap-2 text-body-sm"
-            >
-              Launch Dashboard
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-16"
-        >
-          <div className="card p-4">
-            <div className="aspect-video bg-background rounded-card overflow-hidden flex items-center justify-center">
-              <DotLottieReact
-                src="https://lottie.host/8cf4ba71-e5fb-44f3-8134-178c4d389417/0CCsdcgNIP.json"
-                loop
-                autoplay
-                className="w-3/4 h-3/4"
-              />
+    <div className="min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20">
+      
+      <div className="max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
+        
+        {/* Hero Section Split: Oversized Condensed Headline + Live Media Frame */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end pt-4">
+          
+          {/* Left Column: Massive 80px-130px Condensed Uppercase Headline */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="lg:col-span-7 text-left space-y-6"
+          >
+            {/* Mint Tag Pill (64px Radius) */}
+            <div className="flex items-center gap-3">
+              <span className="tag-mint">
+                [tag: live inference stream]
+              </span>
+              <span className="font-mono text-xs text-smoke">
+                SLIDE 1/3
+              </span>
             </div>
-          </div>
-        </motion.div>
 
+            {/* Massive 80px-130px Uppercase Condensed Headline at 0.9 Line-Height */}
+            <h1 className="font-condensed text-6xl md:text-8xl lg:text-[110px] font-bold text-carbon-black uppercase leading-[0.9] tracking-[-0.03em]">
+              SURVEILLANCE INTELLIGENCE FOR EXAMS
+            </h1>
+
+            <p className="text-body font-normal text-slate max-w-lg leading-relaxed">
+              Brutalist, material-product analytics. High-contrast vision intelligence operating on warm gray canvas without clinical noise.
+            </p>
+
+            {/* Buttons & Email Burst Unit with Voltage Yellow Highlight */}
+            <div className="pt-2 flex flex-wrap items-center gap-4">
+              <button
+                onClick={onLaunch}
+                className="btn-primary"
+              >
+                <span>Schedule Demo</span>
+                <ArrowUpRight className="w-4 h-4 text-paper-white" />
+              </button>
+
+              <button
+                onClick={onLaunch}
+                className="btn-ghost"
+              >
+                <span>View Architecture</span>
+              </button>
+
+              <div className="px-3 py-1 bg-voltage-yellow text-black font-mono text-xs font-bold rounded-sm">
+                institutional access live
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Right Column: Flat White Card (32px Radius, Zero Shadow, Zero Border) */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="lg:col-span-5"
+          >
+            <div className="card bg-paper-white rounded-[32px] p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-mist-gray pb-3">
+                <span className="font-condensed text-xl font-bold uppercase tracking-tight">Live Feed Stream</span>
+                <span className="tag-mint">active stream</span>
+              </div>
+
+              <div className="aspect-video bg-warm-canvas rounded-[24px] p-4 relative flex items-center justify-center overflow-hidden">
+                <DotLottieReact
+                  src="https://lottie.host/8cf4ba71-e5fb-44f3-8134-178c4d389417/0CCsdcgNIP.json"
+                  loop
+                  autoplay
+                  className="w-4/5 h-4/5"
+                />
+              </div>
+            </div>
+          </motion.div>
+
+        </div>
+
+        {/* Inverted Black Section Block (32px Radius) */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="card-inverted bg-carbon-black rounded-[32px] p-10 space-y-6 text-left"
         >
-          {features.map((feature, i) => {
-            const Icon = feature.icon
+          <div className="flex items-center justify-between">
+            <span className="tag-mint">dramatic contrast zone</span>
+            <span className="font-mono text-xs text-smoke">REF 000000</span>
+          </div>
+
+          <h2 className="font-condensed text-4xl md:text-6xl font-bold text-paper-white uppercase leading-[0.9] tracking-tight">
+            ENGINEERED WITHOUT CLINICAL DECORATION. FLAT SURFACES, ZERO ELEVATION.
+          </h2>
+
+          <p className="text-body text-smoke max-w-2xl font-normal leading-relaxed">
+            Every card surface sits flat against the warm gray canvas. Scale contrast carries visual hierarchy without drop shadows.
+          </p>
+        </motion.div>
+
+        {/* 3 Standard White Cards Grid (32px Radius, Zero Shadow) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+          {useCases.map((uc, i) => {
+            const Icon = uc.icon
             return (
-              <div key={i} className="card p-8 text-left">
-                <div className="flex items-center justify-between mb-6">
-                  <Icon className="w-5 h-5" strokeWidth={1.25} style={{ color: 'var(--accent)' }} />
-                  <span className="pill-badge text-caption font-mono">{String(i + 1).padStart(2, '0')}</span>
+              <div key={i} className="card bg-paper-white rounded-[32px] p-8 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-[12px] bg-mist-gray flex items-center justify-center text-carbon-black">
+                    <Icon className="w-5 h-5" strokeWidth={1.5} />
+                  </div>
+                  <span className="tag-mint">{uc.tag}</span>
                 </div>
-                <h3 className="text-heading-sm mb-2">{feature.label}</h3>
-                <p className="prose-voice text-body-sm text-muted-foreground normal-case">{feature.desc}</p>
+
+                <h3 className="font-condensed text-3xl font-bold text-carbon-black uppercase leading-[0.9]">
+                  {uc.title}
+                </h3>
+
+                <p className="text-body-sm text-slate leading-relaxed">
+                  {uc.desc}
+                </p>
+
+                <div className="pt-2">
+                  <button
+                    onClick={onLaunch}
+                    className="text-body-sm font-medium text-carbon-black hover:underline flex items-center gap-1"
+                  >
+                    <span>More details</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )
           })}
-        </motion.div>
+        </div>
+
       </div>
     </div>
   )

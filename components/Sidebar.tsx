@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { LayoutDashboard, Video, FileSearch, Settings, Eye } from 'lucide-react'
+import { LayoutDashboard, Video, FileSearch, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SettingsModal from './SettingsModal'
 
@@ -21,18 +20,20 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   return (
-    <aside className="w-20 bg-card border-r border-border flex flex-col items-center py-6 gap-6">
-      <div className="mb-4">
+    <aside className="w-20 bg-warm-canvas border-r border-ash flex flex-col items-center py-6 gap-6 font-sans text-caption select-none">
+      {/* Brand Icon Mark */}
+      <div className="mb-2">
         <button 
           onClick={() => onViewChange('dashboard')}
-          className="w-12 h-12 bg-primary hover:bg-primary/90 transition-colors rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          title="Go to Dashboard"
+          className="w-10 h-10 bg-paper-white rounded-[16px] flex items-center justify-center font-condensed text-xl font-bold text-carbon-black transition-transform hover:scale-105"
+          title="AI for Business"
         >
-          <Eye className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
+          AI
         </button>
       </div>
 
-      <nav className="flex-1 flex flex-col gap-2">
+      {/* Nav Items */}
+      <nav className="flex-1 flex flex-col gap-3 w-full px-2">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = activeView === item.id
@@ -42,26 +43,27 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
               key={item.id}
               onClick={() => onViewChange(item.id as any)}
               className={cn(
-                "relative p-4 rounded-xl transition-colors",
-                isActive ? 'text-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                "relative w-full py-3.5 flex flex-col items-center justify-center gap-1.5 rounded-[20px] transition-all border",
+                isActive 
+                  ? 'bg-carbon-black text-paper-white border-carbon-black font-medium' 
+                  : 'bg-transparent text-slate border-transparent hover:text-carbon-black hover:bg-paper-white'
               )}
               title={item.label}
             >
-              <Icon className="w-6 h-6" strokeWidth={2} />
-              {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r" />
-              )}
+              <Icon className="w-4 h-4" strokeWidth={1.5} />
+              <span className="text-[10px] tracking-tight uppercase font-mono">{item.label}</span>
             </button>
           )
         })}
       </nav>
 
+      {/* Settings Action */}
       <button 
         onClick={() => setIsSettingsOpen(true)}
-        className="p-4 text-muted-foreground hover:text-foreground hover:bg-accent rounded-xl transition-colors" 
+        className="w-9 h-9 text-slate hover:text-carbon-black hover:bg-paper-white border border-transparent rounded-[16px] flex items-center justify-center transition-colors" 
         title="Settings"
       >
-        <Settings className="w-6 h-6" strokeWidth={2} />
+        <Settings className="w-4 h-4" strokeWidth={1.5} />
       </button>
 
       <SettingsModal 
