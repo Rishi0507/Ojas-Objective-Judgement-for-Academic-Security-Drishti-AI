@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getCurrentPipelineDir } from '@/lib/currentVideo'
+import { createClient } from '@/lib/supabase/server'
+import { syncVerdict } from '@/lib/supabase/sync'
 
 /**
  * Reviewer verdicts on individual offences.
@@ -57,6 +59,19 @@ export async function POST(request: NextRequest) {
     const p = reviewPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(verdicts, null, 2))
+
+    // Mirror to Supabase so a verdict is attributed to a reviewer and survives
+    // beyond this machine. The local file stays authoritative for rendering,
+    // so an unconfigured or failing Supabase never blocks a review.
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getUser()
+      if (data.user) {
+        await syncVerdict(getCurrentPipelineDir(), data.user.id, key, verdict)
+      }
+    } catch {
+      // local-only run
+    }
 
     return NextResponse.json({ ok: true, verdicts })
   } catch (error: any) {

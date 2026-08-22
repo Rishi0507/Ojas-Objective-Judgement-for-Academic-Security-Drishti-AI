@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
+import { createVideoRow, updateVideoStatus, syncJobResults } from './supabase/sync'
 
 export type JobState = 'queued' | 'processing' | 'done' | 'error'
 
@@ -18,6 +19,12 @@ export interface JobStatus {
   percent?: number
   /** Current pipeline stage id, e.g. "module3_motion_detection". */
   stage?: string
+  /**
+   * Supabase user id of whoever uploaded this. Carried explicitly because
+   * processing finishes long after the request that started it, so there is
+   * no session to read at write time. Empty for anonymous/local-only runs.
+   */
+  ownerId?: string
 }
 
 const ROOT = process.cwd()
@@ -414,14 +421,27 @@ async function generateEventClips(
 // waiting" correctly with no extra state needed.
 let queueTail: Promise<void> = Promise.resolve()
 
-export function enqueueProcessing(jobId: string, videoPath: string, filename: string): void {
-  queueTail = queueTail.then(() => processUploadedVideo(jobId, videoPath, filename))
+export function enqueueProcessing(
+  jobId: string,
+  videoPath: string,
+  filename: string,
+  ownerId = ''
+): void {
+  queueTail = queueTail.then(() => processUploadedVideo(jobId, videoPath, filename, ownerId))
 }
 
-async function processUploadedVideo(jobId: string, videoPath: string, filename: string) {
+async function processUploadedVideo(
+  jobId: string,
+  videoPath: string,
+  filename: string,
+  ownerId = ''
+) {
   const outDir = path.join(PIPELINE_OUT_DIR, jobId)
 
   try {
+    // Non-blocking: a Supabase failure must not stop analysis that would
+    // otherwise succeed, so every sync call here is awaited but never thrown.
+    await updateVideoStatus(jobId, ownerId, { status: 'processing' })
     writeStatus(jobId, {
       state: 'processing',
       message: 'Starting motion detection & event segmentation (Modules 1-7)...',
@@ -505,12 +525,21 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
       percent: 100,
       videoId: enriched.video_id,
       eventCount: enriched.event_count,
+      ownerId,
     })
+
+    // Mirror artefacts and rows into Supabase after the job is already marked
+    // done locally, so a slow or failing upload never delays the UI.
+    await syncJobResults(jobId, ownerId, outDir, enriched, proxyPath ?? videoPath)
   } catch (err: any) {
     writeStatus(jobId, {
       state: 'error',
       message: 'Processing failed',
       error: err?.message ?? String(err),
+    })
+    await updateVideoStatus(jobId, ownerId, {
+      status: 'error',
+      error_message: err?.message ?? String(err),
     })
   }
 }
