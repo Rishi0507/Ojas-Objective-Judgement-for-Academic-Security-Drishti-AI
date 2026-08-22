@@ -14,6 +14,12 @@ import (
 func processEvents(events []Event, roisData *ROIsData, framesDir string, detector *YOLODetector, header *Header, outDir string) []EnrichedEvent {
 	enriched := make([]EnrichedEvent, 0, len(events))
 
+	// One tracker for the whole video, so identities carry across events:
+	// a person seen in two events keeps one ID instead of being renumbered
+	// from 1 each time, which previously made cross-event comparisons
+	// meaningless (every event had its own unrelated "Track-01").
+	tracker := NewByteTracker()
+
 	// Build frame index lookup for ROIs (if available)
 	frameROIsMap := make(map[int]FrameROIs)
 	if roisData != nil {
@@ -45,7 +51,7 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 
 		// Run person detection and tracking (Module 8)
 		if detector != nil {
-			personTracks := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir)
+			personTracks := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir, tracker)
 			enrichedEvent.PersonTracks = personTracks
 		} else {
 			// Mock mode: generate fake person tracks
@@ -115,13 +121,18 @@ func getFrameROIs(eventFrames []FrameROIs, frameIdx int) (FrameROIs, bool) {
 }
 
 // detectAndTrackPersons runs person detection and ByteTrack-style tracking
-func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string) []PersonTrack {
+func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string, tracker *ByteTracker) []PersonTrack {
 	if detector == nil {
 		// Mock mode - generate realistic person tracks
 		return generateMockPersonTracks(event, eventFrames)
 	}
-	
-	tracker := NewByteTracker()
+
+	// The tracker is owned by the caller and shared across every event in
+	// this video, so a track ID means "this person" rather than "the Nth
+	// person detected in this particular event". Retire anything last seen
+	// well before this event starts — see ExpireBefore.
+	tracker.ExpireBefore(event.Start - maxTrackGapSeconds)
+
 	trackBBoxes := make(map[int][]BBox)
 
 	// Create annotated frames directory
@@ -193,22 +204,28 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 		// Update tracker with person detections
 		activeTracks := tracker.Update(detections)
 
-		// Store bboxes per track
+		// Record one bbox per track for THIS frame. Only tracks matched on
+		// this frame get an entry (TimeSinceSeen == 0); a coasting track has
+		// no observed position to report. Previously every detection the
+		// track had ever seen was re-appended here, stamped with the current
+		// frame — inflating frame counts and corrupting the timestamps that
+		// loitering and crowd detection depend on.
 		fps := header.FPS
 		timestampSec := float64(frameIdx) / fps
 		for _, track := range activeTracks {
-			for _, det := range track.Detections {
-				bbox := BBox{
-					FrameIdx:     frameIdx,
-					TimestampSec: timestampSec,
-					X1:           det.BBox.Min.X,
-					Y1:           det.BBox.Min.Y,
-					X2:           det.BBox.Max.X,
-					Y2:           det.BBox.Max.Y,
-					Confidence:   det.Confidence,
-				}
-				trackBBoxes[track.ID] = append(trackBBoxes[track.ID], bbox)
+			if track.TimeSinceSeen != 0 || len(track.Detections) == 0 {
+				continue
 			}
+			track.LastSeenSec = timestampSec
+			trackBBoxes[track.ID] = append(trackBBoxes[track.ID], BBox{
+				FrameIdx:     frameIdx,
+				TimestampSec: timestampSec,
+				X1:           track.LastBBox.Min.X,
+				Y1:           track.LastBBox.Min.Y,
+				X2:           track.LastBBox.Max.X,
+				Y2:           track.LastBBox.Max.Y,
+				Confidence:   track.Detections[len(track.Detections)-1].Confidence,
+			})
 		}
 	}
 	
@@ -390,6 +407,11 @@ const (
 	// During an exam the baseline is near-static, so three people moving in
 	// the same frame is already anomalous.
 	crowdMinPersons = 3
+	// How long a track may go unobserved and still be considered the same
+	// person when detection resumes. Detection only runs inside events, so
+	// this gap is unwatched footage; beyond it, matching on position alone
+	// is guesswork rather than tracking.
+	maxTrackGapSeconds = 30.0
 )
 
 // Deliberately narrow. Classes like "remote" and "laptop" fired constantly on
@@ -657,6 +679,54 @@ func classifyOffences(event Event, ev EnrichedEvent, outDir string) []Offence {
 	return offences
 }
 
+// computePersonProximity scores how tightly people cluster during an event,
+// as the largest fraction of tracked people that are simultaneously close to
+// someone else. Distance is measured between box centres and scaled by box
+// width, so two people side by side score the same whether they are near the
+// camera or far from it. 0 = everyone isolated, 1 = everyone paired up.
+func computePersonProximity(tracks []PersonTrack) float64 {
+	if len(tracks) < 2 {
+		return 0
+	}
+
+	// Regroup per-track boxes by the frame they were observed on.
+	byFrame := make(map[int][]BBox)
+	for _, t := range tracks {
+		for _, b := range t.BBoxes {
+			byFrame[b.FrameIdx] = append(byFrame[b.FrameIdx], b)
+		}
+	}
+
+	best := 0.0
+	for _, boxes := range byFrame {
+		if len(boxes) < 2 {
+			continue
+		}
+		near := make([]bool, len(boxes))
+		for i := 0; i < len(boxes); i++ {
+			for j := i + 1; j < len(boxes); j++ {
+				a, b := boxes[i], boxes[j]
+				ax, ay := float64(a.X1+a.X2)/2, float64(a.Y1+a.Y2)/2
+				bx, by := float64(b.X1+b.X2)/2, float64(b.Y1+b.Y2)/2
+				width := math.Max(float64(a.X2-a.X1), float64(b.X2-b.X1)) + 1
+				if math.Hypot(ax-bx, ay-by)/width < 1.5 {
+					near[i], near[j] = true, true
+				}
+			}
+		}
+		count := 0
+		for _, n := range near {
+			if n {
+				count++
+			}
+		}
+		if f := float64(count) / float64(len(boxes)); f > best {
+			best = f
+		}
+	}
+	return math.Round(best*1000) / 1000
+}
+
 // collectSnapshots returns the distinct evidence stills across an event's
 // offences, preserving order so the strongest finding's still comes first.
 func collectSnapshots(offences []Offence) []string {
@@ -669,6 +739,34 @@ func collectSnapshots(offences []Offence) []string {
 		}
 	}
 	return shots
+}
+
+// collectTrackIDs lists the people seen during an event. Because one tracker
+// now spans the whole video, these IDs are comparable between events — the
+// basis for linking "the same person appears here and here".
+func collectTrackIDs(tracks []PersonTrack) []string {
+	ids := make([]string, 0, len(tracks))
+	seen := make(map[string]bool)
+	for _, t := range tracks {
+		if t.TrackID != "" && !seen[t.TrackID] {
+			seen[t.TrackID] = true
+			ids = append(ids, t.TrackID)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// computeObjectScore reduces prohibited-item findings to a single 0-1 signal
+// for weighted re-scoring, using the strongest detection in the event.
+func computeObjectScore(offences []Offence) float64 {
+	best := 0.0
+	for _, o := range offences {
+		if o.Type == "prohibited_object" && o.Confidence > best {
+			best = o.Confidence
+		}
+	}
+	return math.Round(best*1000) / 1000
 }
 
 func derefTrackID(id *string) string {
@@ -913,6 +1011,11 @@ func buildAPIResponse(header *Header, enrichedEvents []EnrichedEvent, eventsData
 			PeakJerkScore:   ev.PeakJerkScore,
 			Offences:        ev.Offences,
 			Snapshots:       collectSnapshots(ev.Offences),
+			TrackIDs:        collectTrackIDs(ev.PersonTracks),
+			PersonCount:     len(ev.PersonTracks),
+			ObjectClasses:   ev.DetectionSummary.ObjectTypes,
+			ObjectScore:     computeObjectScore(ev.Offences),
+			PersonProximity: computePersonProximity(ev.PersonTracks),
 		}
 		apiEvents = append(apiEvents, apiEvent)
 	}

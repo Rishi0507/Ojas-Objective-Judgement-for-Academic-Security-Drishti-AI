@@ -204,6 +204,17 @@ type APIEvent struct {
 	PeakJerkScore   float64          `json:"jerkScore"`
 	Offences        []Offence        `json:"offences"`
 	Snapshots       []string         `json:"snapshots"` // auto-captured evidence stills
+
+	// Signals for profile-based re-scoring and event grouping. Full
+	// PersonTrack/ObjectDetection arrays are deliberately not inlined here —
+	// they run to hundreds of per-frame boxes per event and would dwarf the
+	// rest of the payload. These are the reduced forms consumers actually
+	// need; the raw arrays remain in EnrichedEvent for anything server-side.
+	TrackIDs        []string `json:"trackIds"`        // every person seen; stable across events in a video
+	PersonCount     int      `json:"personCount"`     // distinct people tracked in this event
+	ObjectClasses   []string `json:"objectClasses"`   // prohibited item types present
+	ObjectScore     float64  `json:"objectScore"`     // 0-1, strongest prohibited-item detection
+	PersonProximity float64  `json:"personProximity"` // 0-1, how closely people cluster
 }
 
 type DetectionInfo struct {
