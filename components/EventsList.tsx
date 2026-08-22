@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Clock, ListFilter, AlertTriangle, X, Undo2 } from 'lucide-react'
+import { Search, Clock, ListFilter, AlertTriangle, X, Undo2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface OffenceData {
@@ -89,6 +89,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   const [query, setQuery] = useState('')
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({})
   const [showDismissed, setShowDismissed] = useState(false)
+  const [selected, setSelected] = useState<OffenceRow | null>(null)
 
   useEffect(() => {
     fetch('/api/video')
@@ -341,8 +342,9 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
               return (
                 <div
                   key={`${segment.id}-${offence.type}-${offence.frameIdx}-${i}`}
+                  onClick={() => setSelected({ offence, segment })}
                   className={cn(
-                    'w-full p-4 card text-left flex gap-4 transition-opacity',
+                    'w-full p-4 card text-left flex gap-4 transition-opacity cursor-pointer',
                     isDismissed ? 'opacity-50' : 'card-hover'
                   )}
                 >
@@ -387,34 +389,17 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                     </div>
 
                     <div className="flex items-center gap-3 mt-2">
-                      <button
-                        onClick={() => onEventSelect(segment.id)}
-                        className="text-xs text-primary hover:underline font-medium"
-                      >
-                        Review in context
-                      </button>
-                      {isDismissed ? (
-                        <>
-                          <span className="text-xs text-muted-foreground italic">
-                            Dismissed as false positive
-                          </span>
-                          <button
-                            onClick={() => setVerdict(key, null)}
-                            className="text-xs text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
-                          >
-                            <Undo2 className="w-3 h-3" strokeWidth={2} />
-                            Undo
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setVerdict(key, 'dismissed')}
-                          className="text-xs text-muted-foreground hover:text-red-600 font-medium flex items-center gap-1"
-                          title="Detection is heuristic — discard this if it is wrong"
-                        >
-                          <X className="w-3 h-3" strokeWidth={2.5} />
-                          Discard as false positive
-                        </button>
+                      <span className="text-xs text-primary font-medium">Open to review →</span>
+                      {verdicts[key] === 'confirmed' && (
+                        <span className="text-xs text-green-700 font-medium flex items-center gap-1">
+                          <Check className="w-3 h-3" strokeWidth={2.5} />
+                          Confirmed offence
+                        </span>
+                      )}
+                      {isDismissed && (
+                        <span className="text-xs text-muted-foreground italic">
+                          Dismissed as false positive
+                        </span>
                       )}
                     </div>
                   </div>
@@ -424,6 +409,134 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
           </div>
         )}
       </div>
+
+      {selected && (() => {
+        const { offence, segment } = selected
+        const key = offenceKey(offence)
+        const verdict = verdicts[key]
+        const style = styleFor(offence.type)
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 overflow-y-auto"
+            onClick={() => setSelected(null)}
+          >
+            <div
+              className="bg-card border border-border rounded-xl max-w-3xl w-full my-auto overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 p-5 border-b border-border">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
+                      {style.label}
+                    </span>
+                    {offence.trackId && (
+                      <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{offence.trackId}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {(offence.confidence * 100).toFixed(0)}% confidence
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-semibold leading-snug">{offence.label}</h3>
+                </div>
+                <button
+                  onClick={() => setSelected(null)}
+                  className="p-2 hover:bg-accent rounded-lg transition-colors flex-shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" strokeWidth={2} />
+                </button>
+              </div>
+
+              {offence.snapshot ? (
+                <img
+                  src={`/api/snapshot?path=${encodeURIComponent(offence.snapshot)}`}
+                  alt={offence.label}
+                  className="w-full bg-muted object-contain max-h-[45vh]"
+                />
+              ) : (
+                <div className="w-full aspect-video bg-muted flex items-center justify-center text-sm text-muted-foreground">
+                  No still captured for this finding
+                </div>
+              )}
+
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  {[
+                    ['Occurred at', formatTime(offence.startSec)],
+                    ['Person', offence.trackId || '—'],
+                    ['Confidence', `${(offence.confidence * 100).toFixed(0)}%`],
+                    ['Segment', `${formatTime(segment.start)}–${formatTime(segment.end)}`],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
+                      <div className="font-mono text-sm">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* State plainly what the system did and did not observe, so a
+                    reviewer is judging the evidence rather than a verdict. */}
+                <div className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3 leading-relaxed">
+                  Automated detection is heuristic — it reports what was observed, not intent.
+                  Confirm only if the footage supports it.
+                </div>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={() => setVerdict(key, verdict === 'confirmed' ? null : 'confirmed')}
+                    className={cn(
+                      'px-4 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 border transition-colors',
+                      verdict === 'confirmed'
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'bg-background border-border hover:bg-green-50 hover:text-green-700 hover:border-green-200'
+                    )}
+                  >
+                    <Check className="w-4 h-4" strokeWidth={2.5} />
+                    {verdict === 'confirmed' ? 'Confirmed as offence' : 'Confirm as offence'}
+                  </button>
+
+                  <button
+                    onClick={() => setVerdict(key, verdict === 'dismissed' ? null : 'dismissed')}
+                    className={cn(
+                      'px-4 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 border transition-colors',
+                      verdict === 'dismissed'
+                        ? 'bg-red-600 text-white border-red-600'
+                        : 'bg-background border-border hover:bg-red-50 hover:text-red-700 hover:border-red-200'
+                    )}
+                  >
+                    <X className="w-4 h-4" strokeWidth={2.5} />
+                    {verdict === 'dismissed' ? 'Discarded as false positive' : 'Discard as false positive'}
+                  </button>
+
+                  {verdict && (
+                    <button
+                      onClick={() => setVerdict(key, null)}
+                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
+                    >
+                      <Undo2 className="w-4 h-4" strokeWidth={2} />
+                      Undo
+                    </button>
+                  )}
+
+                  <div className="flex-1" />
+
+                  <button
+                    onClick={() => {
+                      setSelected(null)
+                      onEventSelect(segment.id)
+                    }}
+                    className="px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors"
+                  >
+                    Watch the clip
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
