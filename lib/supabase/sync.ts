@@ -228,7 +228,10 @@ export async function syncVerdict(
   if (!supabase || !reviewerId) return
 
   try {
-    const [trackId, offenceType, frameIdxRaw] = key.split(':')
+    // Key format is set by EventsList.offenceKey(): `${trackId}|${type}|${frameIdx}`.
+    // Pipe, not colon - offence labels and track ids can both contain colons.
+    const [trackIdRaw, offenceType, frameIdxRaw] = key.split('|')
+    const trackId = trackIdRaw === 'none' ? '' : trackIdRaw
     const frameIdx = Number(frameIdxRaw)
 
     const { data: video } = await supabase
