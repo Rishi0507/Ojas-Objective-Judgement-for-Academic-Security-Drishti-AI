@@ -66,18 +66,42 @@ export function readStatus(jobId: string): JobStatus | null {
   }
 }
 
-function runCommand(cmd: string, args: string[], cwd: string): Promise<string> {
+const activeProcesses = new Map<string, Set<any>>()
+
+function runCommand(cmd: string, args: string[], cwd: string, jobId?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd })
+    if (jobId) {
+      if (!activeProcesses.has(jobId)) activeProcesses.set(jobId, new Set())
+      activeProcesses.get(jobId)!.add(child)
+    }
+    
     let out = ''
     child.stdout.on('data', (d) => { out += d.toString() })
     child.stderr.on('data', (d) => { out += d.toString() })
-    child.on('error', (err) => reject(new Error(`Failed to start ${cmd}: ${err.message}`)))
+    child.on('error', (err) => {
+      if (jobId) activeProcesses.get(jobId)?.delete(child)
+      reject(new Error(`Failed to start ${cmd}: ${err.message}`))
+    })
     child.on('close', (code) => {
-      if (code === 0) resolve(out)
+      if (jobId) activeProcesses.get(jobId)?.delete(child)
+      if (code === 0 || code === null) resolve(out) // Allow null code for killed processes
       else reject(new Error(`${path.basename(cmd)} exited with code ${code}\n${out.split('\n').slice(-20).join('\n')}`))
     })
   })
+}
+
+export function cancelJob(jobId: string) {
+  writeStatus(jobId, { state: 'error', message: 'Cancelled by user', percent: 0 })
+  const procs = activeProcesses.get(jobId)
+  if (procs) {
+    for (const p of procs) {
+      try {
+        p.kill('SIGKILL')
+      } catch (e) {}
+    }
+    procs.clear()
+  }
 }
 
 /**
@@ -159,7 +183,7 @@ const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
  * than after it, so on typical clip lengths the transcode is hidden inside
  * that window instead of adding to total wait time.
  */
-async function generatePlaybackProxy(videoPath: string, outDir: string): Promise<string> {
+async function generatePlaybackProxy(videoPath: string, outDir: string, jobId: string): Promise<string> {
   const outPath = path.join(outDir, 'playback.mp4')
   const [videoCodec, audioCodec] = await Promise.all([
     probeCodec(videoPath, 'v:0'),
@@ -182,7 +206,7 @@ async function generatePlaybackProxy(videoPath: string, outDir: string): Promise
     ...audioArgs,
     '-movflags', '+faststart',
     outPath,
-  ], ROOT)
+  ], ROOT, jobId)
 
   return outPath
 }
@@ -245,7 +269,7 @@ async function generateEventClips(
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
         '-an', '-movflags', '+faststart',
         clipPath,
-      ], ROOT)
+      ], ROOT, jobId)
       ev.clipUrl = path.relative(ROOT, clipPath).split(path.sep).join('/')
     } catch (err: any) {
       console.error(`[clips] ${jobId} ${safeId} failed:`, err?.message ?? err)
@@ -281,9 +305,9 @@ async function generateEventClips(
             '-pix_fmt', 'yuv420p',
             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
             '-movflags', '+faststart',
-            annPath,
-          ], ROOT)
-          ev.annotatedClipUrl = path.relative(ROOT, annPath).split(path.sep).join('/')
+            annotatedClipPath,
+          ], ROOT, jobId)
+          ev.annotatedClipUrl = path.relative(ROOT, annotatedClipPath).split(path.sep).join('/')
         } catch (err: any) {
           console.error(`[clips] ${jobId} ${safeId} annotated failed:`, err?.message ?? err)
         } finally {
@@ -321,7 +345,7 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
     // Kicked off alongside the Python pipeline (not after it) — see
     // generatePlaybackProxy's docstring. Non-fatal if it fails (e.g. ffmpeg
     // missing): falls back to streaming the raw source, same as before.
-    const proxyPromise = generatePlaybackProxy(videoPath, outDir).catch((err) => {
+    const proxyPromise = generatePlaybackProxy(videoPath, outDir, jobId).catch((err) => {
       console.error(`[playback-proxy] failed for ${jobId}:`, err?.message ?? err)
       return null
     })
@@ -331,7 +355,8 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
       await runCommand(
         'python',
         [path.join(M1_7_DIR, 'run_pipeline.py'), videoPath, '--out-dir', outDir, '--no-clips'],
-        ROOT
+        ROOT,
+        jobId
       )
     } finally {
       clearInterval(progressInterval)
@@ -348,7 +373,8 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
         '--frames-dir', path.join(outDir, 'frames'),
         '--out-dir', path.join(outDir, 'backend_output'),
       ],
-      M8_9_DIR
+      M8_9_DIR,
+      jobId
     )
 
     writeStatus(jobId, { message: 'Finalizing results...', percent: 98 })
