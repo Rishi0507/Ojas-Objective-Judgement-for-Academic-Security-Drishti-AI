@@ -17,6 +17,13 @@ func main() {
 	headerJSON := flag.String("header-json", "", "Path to header.json from Module 1")
 	framesDir := flag.String("frames-dir", "", "Directory of sampled frames from Module 2")
 	outDir := flag.String("out-dir", "", "Output directory for enriched results")
+	// Passed explicitly rather than derived from out-dir: the caller writes
+	// results into <job>/backend_output while Module 10.4 writes baselines to
+	// <job>/baselines, so anything resolved relative to out-dir silently looks
+	// in the wrong place and every offence loses its region context without a
+	// single error being raised.
+	baselinesJSON := flag.String("baselines-json", "",
+		"Path to Module 10.4's region_baselines.json (optional; defaults next to out-dir)")
 	yoloModel := flag.String("yolo-model", "yolov8n.onnx", "Path to YOLO ONNX model")
 	confidenceThresh := flag.Float64("confidence", 0.5, "Detection confidence threshold")
 	flag.Parse()
@@ -79,7 +86,7 @@ func main() {
 
 	// Process events with person detection and object detection
 	log.Println("[INFO] Processing events with person and object detection...")
-	enrichedEvents := processEvents(eventsData.Events, roisData, *framesDir, detector, header, *outDir)
+	enrichedEvents := processEvents(eventsData.Events, roisData, *framesDir, detector, header, *outDir, *baselinesJSON)
 
 	// Build final output structure matching frontend API contract
 	output := buildAPIResponse(header, enrichedEvents, eventsData)

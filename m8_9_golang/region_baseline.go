@@ -25,6 +25,8 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
 )
 
 // regionAnomaly is one (frame, region) pair that exceeded its own baseline.
@@ -50,6 +52,24 @@ type regionBaselines struct {
 	// byFrame indexes Anomalies for O(1) lookup; the raw slice is a flat list
 	// that would otherwise be rescanned once per offence.
 	byFrame map[int][]regionAnomaly
+}
+
+// resolveBaselinesPath finds Module 10.4's output.
+//
+// Explicit path wins. Otherwise try out-dir, then its parent: the pipeline
+// passes <job>/backend_output as out-dir while 10.4 writes to <job>/baselines,
+// and a manual run may pass the job root directly. Checking both means the
+// same binary works either way instead of quietly producing offences with no
+// region context, which is how this went unnoticed the first time.
+func resolveBaselinesPath(outDir, explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	local := filepath.Join(outDir, "baselines", "region_baselines.json")
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return filepath.Join(filepath.Dir(outDir), "baselines", "region_baselines.json")
 }
 
 // loadRegionBaselines reads Module 10.4's output. A missing file is not an

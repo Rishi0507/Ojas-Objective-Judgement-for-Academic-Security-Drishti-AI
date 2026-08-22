@@ -480,6 +480,8 @@ async function processUploadedVideo(
         '--header-json', path.join(outDir, 'header.json'),
         '--frames-dir', path.join(outDir, 'frames'),
         '--out-dir', path.join(outDir, 'backend_output'),
+        // Module 10.4 writes here, one level up from the backend's out-dir.
+        '--baselines-json', path.join(outDir, 'baselines', 'region_baselines.json'),
       ],
       M8_9_DIR,
       jobId

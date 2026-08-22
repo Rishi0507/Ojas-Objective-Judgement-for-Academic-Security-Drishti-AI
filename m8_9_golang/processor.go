@@ -12,13 +12,13 @@ import (
 )
 
 // processEvents enriches events with person detection and object detection
-func processEvents(events []Event, roisData *ROIsData, framesDir string, detector *YOLODetector, header *Header, outDir string) []EnrichedEvent {
+func processEvents(events []Event, roisData *ROIsData, framesDir string, detector *YOLODetector, header *Header, outDir string, baselinesPath string) []EnrichedEvent {
 	enriched := make([]EnrichedEvent, 0, len(events))
 
 	// Feature 10.4. Loaded once for the video, not per event: the baselines
 	// describe the whole recording. Nil when the stage did not run, and every
 	// use below tolerates that.
-	baselines := loadRegionBaselines(filepath.Join(outDir, "baselines", "region_baselines.json"))
+	baselines := loadRegionBaselines(resolveBaselinesPath(outDir, baselinesPath))
 
 	// One tracker for the whole video, so identities carry across events:
 	// a person seen in two events keeps one ID instead of being renumbered
