@@ -1,8 +1,21 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ArrowUpRight, Zap, Shield, Target } from 'lucide-react'
+import { ArrowUpRight, ArrowRight, Shield, Zap, Target, LogOut, Loader2, AlertCircle } from 'lucide-react'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
+import { useAuth } from '@/lib/useAuth'
+
+/** Google's mark, inlined so the button works offline and needs no CDN. */
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84c.87-2.6 3.3-4.51 6.16-4.51z"/>
+    </svg>
+  )
+}
 
 const useCases = [
   { icon: Zap, tag: 'optical flow', title: 'REAL-TIME MOTION SCORING', desc: 'Sub-100ms inference latency across high-resolution CCTV streams.' },
@@ -15,9 +28,14 @@ interface HeroProps {
 }
 
 export default function Hero({ onLaunch }: HeroProps) {
+  const { user, loading, configured, error, signInWithGoogle, signOut } = useAuth()
+
+  // With Supabase unconfigured the app stays usable rather than locking a
+  // teammate out of their own project over a missing .env.local.
+  const canEnter = !!user || !configured
+
   return (
     <div className="min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20">
-      
       <div className="max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
         
         {/* Hero Section Split: Oversized Condensed Headline + Live Media Frame */}
@@ -49,26 +67,72 @@ export default function Hero({ onLaunch }: HeroProps) {
               Brutalist, material-product analytics. High-contrast vision intelligence operating on warm gray canvas without clinical noise.
             </p>
 
-            {/* Buttons & Email Burst Unit with Voltage Yellow Highlight */}
-            <div className="pt-2 flex flex-wrap items-center gap-4">
-              <button
-                onClick={onLaunch}
-                className="btn-primary"
-              >
-                <span>Schedule Demo</span>
-                <ArrowUpRight className="w-4 h-4 text-paper-white" />
-              </button>
+            {/* Action Buttons & Auth */}
+            <div className="pt-2 space-y-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {loading ? (
+                  <button disabled className="btn-ghost flex items-center gap-2 cursor-wait opacity-60">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Checking session
+                  </button>
+                ) : canEnter ? (
+                  <button
+                    onClick={onLaunch}
+                    className="btn-primary"
+                  >
+                    <span>Launch Dashboard</span>
+                    <ArrowUpRight className="w-4 h-4 text-paper-white" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={signInWithGoogle}
+                    className="btn-primary flex items-center gap-3"
+                  >
+                    <GoogleIcon className="w-5 h-5" />
+                    <span>Sign in with Google</span>
+                  </button>
+                )}
 
-              <button
-                onClick={onLaunch}
-                className="btn-ghost"
-              >
-                <span>View Architecture</span>
-              </button>
+                <button
+                  onClick={onLaunch}
+                  className="btn-ghost"
+                >
+                  <span>View Architecture</span>
+                </button>
 
-              <div className="px-3 py-1 bg-voltage-yellow text-black font-mono text-xs font-bold rounded-sm">
-                institutional access live
+                <div className="px-3 py-1 bg-voltage-yellow text-black font-mono text-xs font-bold rounded-sm">
+                  institutional access live
+                </div>
               </div>
+
+              {user && (
+                <div className="flex items-center gap-3 text-sm text-slate">
+                  <span>
+                    Signed in as <span className="font-medium text-carbon-black">{user.email}</span>
+                  </span>
+                  <button
+                    onClick={signOut}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-ash text-xs hover:bg-mist-gray transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Sign out
+                  </button>
+                </div>
+              )}
+
+              {!configured && !loading && (
+                <div className="flex items-center gap-2 text-xs text-smoke font-mono">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Supabase not configured - demo mode active.
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 text-xs text-red-600 font-mono">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Sign-in failed: {error}
+                </div>
+              )}
             </div>
           </motion.div>
 
