@@ -179,13 +179,14 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 			continue
 		}
 
-		// Save annotated frame if detections found
-		if len(detections) > 0 {
+		// Save annotated frame if there is anything worth boxing.
+		shown := relevantDetections(detections)
+		if len(shown) > 0 {
 			annotatedPath := filepath.Join(annotatedDir, fmt.Sprintf("annotated_frame_%07d.jpg", frameIdx))
-			if err := detector.AnnotateFrame(framePath, detections, annotatedPath); err != nil {
+			if err := detector.AnnotateFrame(framePath, shown, annotatedPath); err != nil {
 				log.Printf("[WARN] Failed to annotate frame %d: %v", frameIdx, err)
 			} else {
-				log.Printf("[INFO] Annotated frame %d with %d detections", frameIdx, len(detections))
+				log.Printf("[INFO] Annotated frame %d with %d detections", frameIdx, len(shown))
 			}
 		}
 
@@ -297,7 +298,7 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 		// flood events with exam-hall furniture (chairs, tables, monitors).
 		var prohibited []Detection
 		for _, det := range allDetections {
-			if !isProhibitedObject(det.ClassName) {
+			if !isProhibitedObject(det.ClassName) || det.Confidence < prohibitedMinConfidence {
 				continue
 			}
 			prohibited = append(prohibited, det)
@@ -320,7 +321,7 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 			shot := filepath.Join(snapshotDir,
 				fmt.Sprintf("event%d_f%07d.jpg", event.EventID, frameIdx))
 			if _, err := os.Stat(shot); os.IsNotExist(err) {
-				if err := detector.AnnotateFrame(framePath, allDetections, shot); err != nil {
+				if err := detector.AnnotateFrame(framePath, relevantDetections(allDetections), shot); err != nil {
 					log.Printf("[WARN] snapshot failed for frame %d: %v", frameIdx, err)
 				}
 			}
@@ -391,16 +392,42 @@ const (
 	crowdMinPersons = 3
 )
 
+// Deliberately narrow. Classes like "remote" and "laptop" fired constantly on
+// this footage without corresponding to any real offence — "remote" in
+// particular is what YOLO reaches for on any small dark rectangle, so it was
+// pure noise. An offence list an investigator cannot trust is worse than a
+// shorter one, so only phones and paper/chits are reported.
 var prohibitedObjects = map[string]string{
 	"cell phone": "mobile phone",
 	"book":       "paper/chit",
-	"laptop":     "laptop",
-	"remote":     "handheld device",
 }
+
+// Detections below this are too weak to put in front of an investigator as a
+// prohibited item. The Python service filters at 0.25 for tracking purposes;
+// an offence claim is held to a higher bar than mere presence.
+const prohibitedMinConfidence = 0.35
 
 func isProhibitedObject(className string) bool {
 	_, ok := prohibitedObjects[className]
 	return ok
+}
+
+// relevantDetections keeps only what an investigator should see boxed: people
+// and prohibited items. YOLO also reports chairs, monitors, desks and similar
+// exam-hall furniture, and drawing boxes around those buries the one detection
+// that actually matters.
+func relevantDetections(dets []Detection) []Detection {
+	out := make([]Detection, 0, len(dets))
+	for _, d := range dets {
+		if d.ClassName == "person" {
+			out = append(out, d)
+			continue
+		}
+		if isProhibitedObject(d.ClassName) && d.Confidence >= prohibitedMinConfidence {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func prohibitedLabel(className string) string {
