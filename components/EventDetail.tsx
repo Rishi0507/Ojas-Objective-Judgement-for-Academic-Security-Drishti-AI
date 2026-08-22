@@ -79,9 +79,14 @@ const feedbackOptions = [
 ]
 
 function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = (seconds % 60).toFixed(1)
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(4, '0')}`
+  const totalSecs = Math.floor(seconds)
+  const hrs = Math.floor(totalSecs / 3600)
+  const mins = Math.floor((totalSecs % 3600) / 60)
+  const secs = totalSecs % 60
+  if (hrs > 0) {
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
 export default function EventDetail({ eventId, onBack }: EventDetailProps) {
