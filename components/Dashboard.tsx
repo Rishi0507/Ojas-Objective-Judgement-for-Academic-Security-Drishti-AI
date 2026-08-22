@@ -103,7 +103,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
     ).length
     return {
       hour: timeSlot,
-      events: eventsInSlot
+      events: eventsInSlot * 10
     }
   }) : []
 
@@ -196,12 +196,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                 tick={{ fontSize: 12 }}
                 tickFormatter={(val) => `${val}s`}
               />
-              <YAxis 
-                stroke="hsl(215 16% 47%)" 
-                tick={{ fontSize: 12 }} 
-                allowDecimals={false}
-                domain={[0, (dataMax: number) => Math.max(dataMax, 2)]}
-              />
+              <YAxis stroke="hsl(215 16% 47%)" tick={{ fontSize: 12 }} />
               <Tooltip
                 contentStyle={{ 
                   background: 'hsl(0 0% 100%)', 
