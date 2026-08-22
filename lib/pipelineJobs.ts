@@ -183,12 +183,50 @@ const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
  * than after it, so on typical clip lengths the transcode is hidden inside
  * that window instead of adding to total wait time.
  */
-async function generatePlaybackProxy(videoPath: string, outDir: string, jobId: string): Promise<string> {
+/**
+ * Timestamp of the first keyframe, or 0 if the file already opens on one.
+ *
+ * CCTV exports are frequently cut mid-stream, so the file's first frames are
+ * predicted frames with no reference to predict from — ffmpeg says as much
+ * ("first frame is no keyframe") and the decoder emits flat grey. Measured on
+ * this footage: 03.CCTV is undecodable until 0.483s, Seat No. 12 until 1.040s,
+ * while 01.Candidate opens cleanly at 0.000s.
+ */
+async function probeFirstKeyframe(videoPath: string): Promise<number> {
+  try {
+    const out = await runCommand('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-skip_frame', 'nokey',
+      '-show_entries', 'frame=pts_time',
+      '-of', 'csv=p=0',
+      '-read_intervals', '%+3',
+      videoPath,
+    ], ROOT)
+    const first = parseFloat(out.trim().split('\n')[0])
+    return Number.isFinite(first) && first > 0 ? first : 0
+  } catch {
+    return 0
+  }
+}
+
+async function generatePlaybackProxy(
+  videoPath: string,
+  outDir: string,
+  jobId: string
+): Promise<{ path: string; offset: number }> {
   const outPath = path.join(outDir, 'playback.mp4')
-  const [videoCodec, audioCodec] = await Promise.all([
+  const [videoCodec, audioCodec, keyframeAt] = await Promise.all([
     probeCodec(videoPath, 'v:0'),
     probeCodec(videoPath, 'a:0'),
+    probeFirstKeyframe(videoPath),
   ])
+
+  // Start at the first keyframe so the proxy opens on a decodable picture.
+  // Reproducing the broken lead-in faithfully only propagates it: it showed up
+  // as a grey thumbnail on the first segment of every video, because segment 1
+  // reliably begins at t=0 right on top of those frames.
+  const seekArgs = keyframeAt > 0 ? ['-ss', keyframeAt.toFixed(3)] : []
 
   const videoArgs = videoCodec && BROWSER_SAFE_VIDEO_CODECS.has(videoCodec)
     ? ['-c:v', 'copy']
@@ -201,14 +239,17 @@ async function generatePlaybackProxy(videoPath: string, outDir: string, jobId: s
       : ['-c:a', 'aac', '-b:a', '128k']
 
   await runCommand('ffmpeg', [
-    '-y', '-i', videoPath,
+    '-y', ...seekArgs, '-i', videoPath,
     ...videoArgs,
     ...audioArgs,
     '-movflags', '+faststart',
     outPath,
   ], ROOT, jobId)
 
-  return outPath
+  // The proxy's clock now starts `offset` seconds into the source. Events are
+  // timed against the source, so anything cutting from the proxy has to
+  // subtract this — see generateEventClips.
+  return { path: outPath, offset: keyframeAt }
 }
 
 /**
@@ -226,7 +267,8 @@ async function generatePlaybackProxy(videoPath: string, outDir: string, jobId: s
 async function generateEventClips(
   outDir: string,
   enriched: any,
-  jobId: string
+  jobId: string,
+  proxyOffset: number
 ): Promise<void> {
   const events: any[] = enriched?.events ?? []
   if (!events.length) return
@@ -254,6 +296,10 @@ async function generateEventClips(
   for (const ev of events) {
     const start = Number(ev.start) || 0
     const duration = Math.max(0.5, (Number(ev.end) || 0) - start)
+    // Events are timed against the source video, but the proxy's clock starts
+    // proxyOffset seconds later (its undecodable lead-in was skipped), so seek
+    // positions have to be rebased or every clip drifts by that much.
+    const proxyStart = Math.max(0, start - proxyOffset)
     const safeId = String(ev.id ?? 'event').replace(/[^a-zA-Z0-9_-]/g, '_')
 
     // ---- plain clip ----
@@ -261,7 +307,7 @@ async function generateEventClips(
     try {
       await runCommand('ffmpeg', [
         '-y',
-        '-ss', start.toFixed(3),
+        '-ss', proxyStart.toFixed(3),
         '-i', playbackPath,
         '-t', duration.toFixed(3),
         // Re-encode rather than stream-copy: copy can only cut on keyframes,
@@ -381,7 +427,9 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
 
     // By now the Python pipeline (several minutes) has almost certainly
     // outlasted the transcode, but await it properly rather than assume.
-    const proxyPath = await proxyPromise
+    const proxy = await proxyPromise
+    const proxyPath = proxy?.path ?? null
+    const proxyOffset = proxy?.offset ?? 0
 
     const enrichedPath = path.join(outDir, 'backend_output', 'enriched_events.json')
     const enriched = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'))
@@ -395,6 +443,9 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
     // browser can decode (see generatePlaybackProxy).
     enriched.pipeline_dir = jobId
     enriched.source_video_path = path.relative(ROOT, proxyPath ?? videoPath).split(path.sep).join('/')
+    // How far into the source the proxy begins, for anything seeking in it by
+    // source timestamps rather than playing a pre-cut clip.
+    enriched.proxy_time_offset = proxyPath ? proxyOffset : 0
 
     // The Go backend records snapshot paths relative to its own working
     // directory (m8_9_golang), so they arrive as "../pipeline_out/...".
@@ -403,7 +454,7 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
     normalizeAssetPaths(enriched)
 
     writeStatus(jobId, { message: 'Extracting event clips...', percent: 99 })
-    await generateEventClips(outDir, enriched, jobId)
+    await generateEventClips(outDir, enriched, jobId, proxyOffset)
 
     fs.writeFileSync(path.join(ROOT, 'public', 'api', 'events.json'), JSON.stringify(enriched, null, 2))
     fs.writeFileSync(path.join(outDir, 'api_response.json'), JSON.stringify(enriched, null, 2))
