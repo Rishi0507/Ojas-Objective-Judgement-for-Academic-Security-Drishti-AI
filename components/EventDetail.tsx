@@ -426,7 +426,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   onChange={handleSeek}
                   className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                   style={{
-                    background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${getSeekPosition()}%, hsl(var(--muted)) ${getSeekPosition()}%, hsl(var(--muted)) 100%)`
+                    background: `linear-gradient(to right, hsl(215 25% 27%) 0%, hsl(215 25% 27%) ${getSeekPosition()}%, hsl(0 0% 96%) ${getSeekPosition()}%, hsl(0 0% 96%) 100%)`
                   }}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground font-mono">
