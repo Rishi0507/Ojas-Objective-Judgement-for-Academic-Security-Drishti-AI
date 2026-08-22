@@ -110,6 +110,13 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
     const enrichedPath = path.join(outDir, 'backend_output', 'enriched_events.json')
     const enriched = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'))
 
+    // Header/video_path inside `enriched` is whatever absolute path was on the
+    // machine that ran Module 1 — not reliably resolvable as a URL. Stamp on
+    // the two app-relative pointers that the heatmap/annotated/stream routes
+    // and the frontend actually need to locate this specific video's assets.
+    enriched.pipeline_dir = jobId
+    enriched.source_video_path = path.relative(ROOT, videoPath).split(path.sep).join('/')
+
     fs.writeFileSync(path.join(ROOT, 'public', 'api', 'events.json'), JSON.stringify(enriched, null, 2))
     fs.writeFileSync(path.join(outDir, 'api_response.json'), JSON.stringify(enriched, null, 2))
 

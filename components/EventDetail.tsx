@@ -61,6 +61,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [showExplanation, setShowExplanation] = useState(true)
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false)
   const [eventData, setEventData] = useState<EventData | null>(null)
+  const [sourceVideoPath, setSourceVideoPath] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0)
@@ -71,6 +72,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     fetch('/api/video')
       .then(res => res.json())
       .then(data => {
+        setSourceVideoPath(data.source_video_path ?? 'clips/04.CCTV Candidate Talking.mkv')
         const event = data.events.find((e: EventData) => e.id === eventId)
         if (event) {
           setEventData(event)
@@ -208,7 +210,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               <video
                 ref={videoRef}
                 className="w-full h-full object-contain"
-                src="/api/stream?path=clips/04.CCTV Candidate Talking.mkv"
+                src={sourceVideoPath ? `/api/stream?path=${encodeURIComponent(sourceVideoPath)}` : undefined}
               >
                 Your browser does not support video playback.
               </video>
@@ -285,6 +287,10 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                     <span className="flex items-center gap-1">
                       <span className="w-3 h-3 bg-orange-500 rounded" />
                       Book
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-yellow-400 rounded" />
+                      Other
                     </span>
                     <span className="ml-auto font-mono">Frame: {currentFrameIdx}</span>
                   </div>

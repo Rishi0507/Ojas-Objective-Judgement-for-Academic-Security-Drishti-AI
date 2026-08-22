@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getCurrentPipelineDir } from '@/lib/currentVideo';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const frameIdx = searchParams.get('frame');
-    
+
     if (!frameIdx) {
       return NextResponse.json({ error: 'Frame index required' }, { status: 400 });
     }
-    
+
     // Path to annotated frame
     const framePath = path.join(
       process.cwd(),
-      'pipeline_out/cctv_video/backend_output/annotated',
+      `pipeline_out/${getCurrentPipelineDir()}/backend_output/annotated`,
       `annotated_frame_${frameIdx.padStart(5, '0')}.jpg`
     );
     

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getCurrentPipelineDir } from '@/lib/currentVideo';
 
 export async function GET() {
   try {
-    const heatmapPath = path.join(process.cwd(), 'pipeline_out/cctv_video/events/heatmap.png');
+    const heatmapPath = path.join(process.cwd(), 'pipeline_out', getCurrentPipelineDir(), 'events/heatmap.png');
     
     if (!fs.existsSync(heatmapPath)) {
       return NextResponse.json({ error: 'Heatmap not found' }, { status: 404 });
