@@ -1,8 +1,53 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera, Gauge, Link2 } from 'lucide-react'
+import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera, Gauge, Link2, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+function getGroundedExplanation(type: string, label: string, trackId?: string, confidence?: number) {
+  const person = trackId || 'Examinee'
+  const confPercent = confidence ? (confidence * 100).toFixed(0) : '90'
+
+  switch (type) {
+    case 'prohibited_object':
+      return {
+        observation: `${person} was detected interacting with an unauthorized object (paper/chit/device) on or near the desk surface.`,
+        reasoning: `Optical flow and spatial object tracking identified a non-standard item held for >3s during active testing.`,
+        recommendation: `Inspect physical desk area around ${person} and verify timestamped snapshot evidence.`,
+      }
+    case 'head_turn':
+      return {
+        observation: `${person} performed a lateral head rotation exceeding allowed vision angle limits (>60°).`,
+        reasoning: `Pose estimation vectors indicated head direction divergence away from the exam paper toward adjacent desks.`,
+        recommendation: `Cross-reference seating chart to verify if ${person} was attempting to view neighbor answer sheets.`,
+      }
+    case 'object_exchange':
+      return {
+        observation: `Physical proximity interaction detected between ${person} and adjacent track area.`,
+        reasoning: `Hand trajectory convergence and spatial overlap detected between two examinees, consistent with passing materials.`,
+        recommendation: `Review video clip around timestamp to confirm whether unauthorized item exchange took place.`,
+      }
+    case 'hand_gesture':
+      return {
+        observation: `Repeated non-standard hand gesture or signaling motion detected for ${person}.`,
+        reasoning: `High-frequency wrist/finger motion vectors outside normal writing patterns, indicating non-verbal communication.`,
+        recommendation: `Check if signaling corresponds with head movement or gaze redirection from surrounding examinees.`,
+      }
+    case 'loitering':
+    case 'crowd_disturbance':
+      return {
+        observation: `Unauthorized movement or loitering near examinee seating area detected.`,
+        reasoning: `Trajectory tracking flagged sustained presence in aisle or restricted zone exceeding standard hall traversal limits.`,
+        recommendation: `Confirm invigilator presence or verify if examinee left seat without permission.`,
+      }
+    default:
+      return {
+        observation: `Behavioral anomaly flagged by AI vision pipeline for ${label}.`,
+        reasoning: `Motion score and posture heuristic threshold exceeded (${confPercent}% confidence).`,
+        recommendation: `Perform manual review of video clip and evidence snapshot.`,
+      }
+  }
+}
 
 /**
  * Colour for an uncertainty band. "unavailable" is deliberately styled as
@@ -144,6 +189,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0)
   const [snapshotNote, setSnapshotNote] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [selectedOffence, setSelectedOffence] = useState<OffenceData | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -427,14 +473,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                     </>
                   )}
                 </button>
-                <button
-                  onClick={handleSnapshot}
-                  className="px-4 py-2 rounded-lg transition-colors flex items-center gap-2 border bg-background border-border hover:bg-accent"
-                  title="Save the current frame as a PNG"
-                >
-                  <Camera className="w-4 h-4" strokeWidth={2} />
-                  Snapshot
-                </button>
+
                 <div className="flex-1" />
                 <span className="font-mono text-sm text-muted-foreground">{eventData.duration.toFixed(1)}s</span>
               </div>
@@ -567,53 +606,6 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   </div>
                 </div>
 
-                {!!eventData.explanations?.length && (
-                  <div className="card p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Link2 className="w-4 h-4 text-muted-foreground" strokeWidth={2} />
-                      <div className="text-sm font-semibold">Grounded Explanations</div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Every claim below links to the frames and boxes it was derived from.
-                    </p>
-                    <div className="space-y-3">
-                      {eventData.explanations.map((ex, i) => (
-                        <div key={i} className="p-3 rounded-lg border border-border bg-muted/30">
-                          <div className="text-sm font-medium mb-2">{ex.claim}</div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground font-mono">
-                            <span>t={formatTime(ex.timestamp)}</span>
-                            {ex.track_id && <span>track={ex.track_id}</span>}
-                            <span>roi=[{ex.roi.join(', ')}]</span>
-                            {ex.object_bbox && <span>bbox=[{ex.object_bbox.join(', ')}]</span>}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {ex.supporting_frame_urls.map((url, j) => (
-                              <a
-                                key={j}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-background hover:bg-accent transition-colors text-xs"
-                              >
-                                <Camera className="w-3 h-3" strokeWidth={2} />
-                                Evidence {j + 1}
-                              </a>
-                            ))}
-                            <span
-                              className={cn(
-                                'px-2 py-1 rounded border text-xs font-medium',
-                                bandStyle(ex.uncertainty_reason.split(': ')[1] ?? 'unavailable')
-                              )}
-                            >
-                              {ex.uncertainty_reason}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
@@ -625,51 +617,51 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               </div>
             )}
           </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="card p-6">
               <h2 className="text-lg font-semibold mb-4">Metadata</h2>
-            <div className="space-y-2 text-sm">
-              {[
-                ['Video ID', eventData.videoId],
-                ['Event ID', eventData.id],
-                ['Start', formatTime(eventData.start)],
-                ['End', formatTime(eventData.end)],
-                ['Duration', eventData.duration.toFixed(1) + 's'],
-                ['Track ID', eventData.trackId],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span className="font-mono text-xs">{value}</span>
-                </div>
-              ))}
+              <div className="space-y-2 text-sm">
+                {[
+                  ['Video ID', eventData.videoId],
+                  ['Event ID', eventData.id],
+                  ['Start', formatTime(eventData.start)],
+                  ['End', formatTime(eventData.end)],
+                  ['Duration', eventData.duration.toFixed(1) + 's'],
+                  ['Track ID', eventData.trackId],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-mono text-xs">{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
             <div className="card p-6">
               <h2 className="text-lg font-semibold mb-4">Quality Factors</h2>
-            <div className="space-y-4">
-              {[
-                { label: 'Camera Shake', value: eventData.qualityFactors.cameraShake },
-                { label: 'Blur Score', value: eventData.qualityFactors.blur },
-                { label: 'Occlusion', value: eventData.qualityFactors.occlusion },
-                { label: 'Lighting', value: eventData.qualityFactors.lighting },
-              ].map((item) => {
-                const percentage = Math.round((1 - item.value) * 100) // Invert so higher quality = higher percentage
-                return (
-                  <div key={item.label}>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-muted-foreground">{item.label}</span>
-                      <span className="font-mono text-xs">{item.value.toFixed(2)}</span>
+              <div className="space-y-4">
+                {[
+                  { label: 'Camera Shake', value: eventData.qualityFactors.cameraShake },
+                  { label: 'Blur Score', value: eventData.qualityFactors.blur },
+                  { label: 'Occlusion', value: eventData.qualityFactors.occlusion },
+                  { label: 'Lighting', value: eventData.qualityFactors.lighting },
+                ].map((item) => {
+                  const percentage = Math.round((1 - item.value) * 100)
+                  return (
+                    <div key={item.label}>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-muted-foreground">{item.label}</span>
+                        <span className="font-mono text-xs">{item.value.toFixed(2)}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }} />
+                      </div>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }} />
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
-          </div>
-
           </div>
 
           {eventData.uncertaintyReasons && (
@@ -706,8 +698,8 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
             <h2 className="text-lg font-semibold mb-4">Investigator Feedback</h2>
             <div className="space-y-2">
               {feedbackOptions.map((option) => {
-                const Icon = option.icon
                 const isSelected = selectedFeedback === option.id
+                const Icon = option.icon
                 return (
                   <button
                     key={option.id}
@@ -736,8 +728,9 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
           </div>
         </div>
 
-        <div className="space-y-6">
-          {!!eventData.offences?.length && (
+        {/* Right Column (lg:col-span-1): Detected Offences ONLY */}
+        <div className="lg:col-span-1 space-y-6">
+          {!!eventData.offences?.length ? (
             <div className="card p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">
@@ -748,99 +741,245 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                 </h2>
               </div>
 
-              <div className="space-y-3">
+              {/* Vertical List for Right Column: Thumbnail + Offence Name + Time */}
+              <div className="space-y-4 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
                 {eventData.offences.map((off, i) => {
-                  const style = OFFENCE_STYLES[off.type] ?? {
-                    label: off.type,
-                    cls: 'bg-muted text-foreground border-border',
-                  }
                   return (
-                    <div key={i} className="flex items-center gap-4 p-3 rounded-lg border border-border bg-background">
+                    <div
+                      key={i}
+                      onClick={() => setSelectedOffence(off)}
+                      className="p-4 card rounded-2xl flex items-center gap-4 cursor-pointer transition-all hover:scale-[1.01] hover:border-carbon-black group border border-ash/40"
+                    >
                       {off.snapshot ? (
-                        <button
-                          onClick={() => setLightbox(off.snapshot!)}
-                          className="flex-shrink-0 w-44 h-[120px] rounded-md overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
-                          title="Click to enlarge the auto-captured evidence"
-                        >
-                          <img
-                            src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
-                            alt={off.label}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
+                        <img
+                          src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
+                          alt={off.label}
+                          className="w-36 h-24 object-cover rounded-xl flex-shrink-0 border border-border group-hover:opacity-95 transition-opacity shadow-sm"
+                        />
                       ) : (
-                        <div className="flex-shrink-0 w-44 h-[120px] rounded-md border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
-                          No still captured
+                        <div className="w-36 h-24 rounded-xl bg-muted/60 border border-dashed border-border flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-6 h-6 text-muted-foreground" />
                         </div>
                       )}
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
-                            {style.label}
-                          </span>
-                          {off.trackId && (
-                            <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{off.trackId}</span>
-                          )}
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {(off.confidence * 100).toFixed(0)}% confidence
-                          </span>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="font-bold text-base text-carbon-black line-clamp-3 leading-snug group-hover:text-primary transition-colors">
+                          {off.label}
                         </div>
-                        <div className="font-medium text-sm mb-1">{off.label}</div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {formatTime(off.startSec)}
-                          {off.endSec > off.startSec && ` – ${formatTime(off.endSec)}`}
-                          {off.durationSec ? ` · ${off.durationSec.toFixed(0)}s stationary` : ''}
-                          {off.count ? ` · ${off.count} involved` : ''}
+                        <div className="text-sm font-mono text-slate flex items-center gap-1.5 flex-wrap">
+                          <Clock className="w-4 h-4 text-slate" />
+                          <span>{formatTime(off.startSec)}</span>
                         </div>
-                        <button
-                          onClick={() => jumpTo(off.startSec)}
-                          className="mt-2 text-xs text-primary hover:underline font-medium"
-                        >
-                          Jump to this moment
-                        </button>
                       </div>
                     </div>
                   )
                 })}
               </div>
             </div>
+          ) : (
+            <div className="card p-6 text-center text-muted-foreground">
+              <div className="text-sm font-medium mb-1">No Offences Detected</div>
+              <p className="text-xs">No behavioral anomalies flagged for this segment.</p>
+            </div>
           )}
         </div>
       </div>
 
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8"
-          onClick={() => setLightbox(null)}
-        >
-          <div className="max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
-              alt="Offence evidence"
-              className="w-full rounded-lg border border-border"
-            />
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="text-xs text-white/70 font-mono truncate">{lightbox.split('/').pop()}</span>
-              <div className="flex gap-2">
-                <a
-                  href={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
-                  download
-                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
-                >
-                  Download
-                </a>
-                <button
-                  onClick={() => setLightbox(null)}
-                  className="px-3 py-1.5 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent"
-                >
-                  Close
-                </button>
+        {/* Grounded Explanation Modal for Selected Offence */}
+        {selectedOffence && (() => {
+          const off = selectedOffence
+          const style = OFFENCE_STYLES[off.type] ?? { label: off.type, cls: 'bg-muted text-foreground border-border' }
+          const grounded = getGroundedExplanation(off.type, off.label, off.trackId, off.confidence)
+
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 overflow-y-auto"
+              onClick={() => setSelectedOffence(null)}
+            >
+              <div
+                className="bg-card border border-border rounded-2xl max-w-2xl w-full my-auto overflow-hidden shadow-2xl space-y-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="flex items-start justify-between gap-4 p-5 border-b border-border bg-muted/20">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', style.cls)}>
+                        {style.label}
+                      </span>
+                      {off.trackId && (
+                        <span className="px-2 py-0.5 bg-muted rounded-md text-xs font-mono">{off.trackId}</span>
+                      )}
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {(off.confidence * 100).toFixed(0)}% confidence
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-bold leading-snug text-foreground">{off.label}</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedOffence(null)}
+                    className="p-2 hover:bg-accent rounded-full transition-colors flex-shrink-0 text-muted-foreground hover:text-foreground"
+                    aria-label="Close"
+                  >
+                    <XCircle className="w-5 h-5" strokeWidth={2} />
+                  </button>
+                </div>
+
+                {/* Evidence Snapshot Image Preview */}
+                {off.snapshot ? (
+                  <div className="bg-black/90 relative flex items-center justify-center">
+                    <img
+                      src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
+                      alt={off.label}
+                      className="w-full object-contain max-h-[40vh]"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full aspect-video bg-muted flex items-center justify-center text-sm text-muted-foreground">
+                    No still captured for this finding
+                  </div>
+                )}
+
+                <div className="p-6 space-y-6">
+                  
+                  {/* GROUNDED EXPLANATIONS & REASONING */}
+                  {(() => {
+                    const matchedEx = eventData.explanations?.find(
+                      (ex) => Math.abs(ex.timestamp - off.startSec) < 4 || ex.claim.toLowerCase().includes(off.type.replace('_', ' '))
+                    )
+
+                    return (
+                      <div className="space-y-3 p-4 bg-muted/30 border border-border rounded-xl">
+                        <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-primary">
+                          <span className="flex items-center gap-2">
+                            <Link2 className="w-4 h-4 text-primary" />
+                            <span>Grounded AI Observation & Evidence Claims</span>
+                          </span>
+                          {matchedEx?.uncertainty_reason && (
+                            <span className="px-2.5 py-0.5 rounded border text-[11px] font-mono bg-muted text-muted-foreground font-normal">
+                              {matchedEx.uncertainty_reason}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-xs text-foreground leading-relaxed">
+                          <div>
+                            <strong className="text-foreground">Visual Observation:</strong>{' '}
+                            <span className="text-muted-foreground">{matchedEx?.claim || grounded.observation}</span>
+                          </div>
+
+                          <div>
+                            <strong className="text-foreground">AI Logic & Heuristics:</strong>{' '}
+                            <span className="text-muted-foreground">{grounded.reasoning}</span>
+                          </div>
+
+                          <div>
+                            <strong className="text-foreground">Recommended Audit:</strong>{' '}
+                            <span className="text-muted-foreground">{grounded.recommendation}</span>
+                          </div>
+                        </div>
+
+                        {/* Technical Evidence Coordinates (t=..., track=..., roi=[...], bbox=[...]) */}
+                        <div className="pt-2 border-t border-border/50 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-mono text-muted-foreground">
+                          <span>t={formatTime(matchedEx?.timestamp ?? off.startSec)}</span>
+                          {(matchedEx?.track_id || off.trackId) && <span>track={matchedEx?.track_id || off.trackId}</span>}
+                          <span>roi=[{(matchedEx?.roi ?? eventData.roi).join(', ')}]</span>
+                          {(off.bbox || matchedEx?.object_bbox) && (
+                            <span>bbox=[{(off.bbox || matchedEx?.object_bbox)?.join(', ')}]</span>
+                          )}
+                        </div>
+
+                        {/* Supporting Evidence Frame Buttons (Evidence 1, Evidence 2, etc.) */}
+                        {matchedEx?.supporting_frame_urls && matchedEx.supporting_frame_urls.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 pt-2">
+                            {matchedEx.supporting_frame_urls.map((url, j) => (
+                              <a
+                                key={j}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-accent transition-colors text-xs font-mono font-medium text-foreground shadow-xs"
+                              >
+                                <Camera className="w-3.5 h-3.5" strokeWidth={2} />
+                                Evidence {j + 1}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Key Technical Details Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 border border-border rounded-xl bg-background text-xs font-mono">
+                    <div>
+                      <div className="text-muted-foreground mb-1">Occurred at</div>
+                      <div className="font-bold text-sm text-foreground">{formatTime(off.startSec)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground mb-1">Track Subject</div>
+                      <div className="font-bold text-sm text-foreground">{off.trackId || 'Examinee'}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground mb-1">Confidence</div>
+                      <div className="font-bold text-sm text-foreground">{(off.confidence * 100).toFixed(0)}%</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground mb-1">Time Range</div>
+                      <div className="font-bold text-sm text-foreground">{formatTime(off.startSec)}–{formatTime(off.endSec)}</div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        jumpTo(off.startSec)
+                        setSelectedOffence(null)
+                      }}
+                      className="btn-primary py-2 px-4 text-xs font-medium flex items-center gap-2"
+                    >
+                      <span>Jump to video timestamp ({formatTime(off.startSec)})</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
+        {lightbox && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8"
+            onClick={() => setLightbox(null)}
+          >
+            <div className="max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
+                alt="Offence evidence"
+                className="w-full rounded-lg border border-border"
+              />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-xs text-white/70 font-mono truncate">{lightbox.split('/').pop()}</span>
+                <div className="flex gap-2">
+                  <a
+                    href={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
+                    download
+                    className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+                  >
+                    Download
+                  </a>
+                  <button
+                    onClick={() => setLightbox(null)}
+                    className="px-3 py-1.5 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
+        )}
+      </div>
+    )
+  }

@@ -33,7 +33,8 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="h-screen overflow-hidden bg-background flex flex-col">
+      <div className="flex flex-1 overflow-hidden">
       <Sidebar
         activeView={activeView === 'event' ? eventOrigin : activeView}
         onViewChange={setActiveView}
@@ -143,6 +144,7 @@ export default function Home() {
             />
           )}
         </main>
+      </div>
       </div>
     </div>
   )

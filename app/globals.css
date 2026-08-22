@@ -2,69 +2,204 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  * {
-    @apply border-border;
-  }
+/*
+ * AI for Business — Style Reference
+ * Brutalist editorial showroom on warm gray. Warm Canvas (#e5e5e5) page background,
+ * Paper White (#ffffff) card surfaces (24px-32px radius, zero shadow), Carbon Black (#000000) display blocks,
+ * Mint Chip (#d1ffca) tag pills (64px radius), Voltage Yellow (#fff100) micro-accents,
+ * and massive uppercase condensed display headlines (Bebas Neue / Anton / Barlow Condensed) at 0.9 line-height.
+ */
+
+:root {
+  --color-carbon-black: #000000;
+  --color-paper-white: #ffffff;
+  --color-warm-canvas: #e5e5e5;
+  --color-mist-gray: #f3f3f3;
+  --color-ash: #c6c6c6;
+  --color-smoke: #979797;
+  --color-slate: #444444;
+  --color-graphite: #2f2f2f;
+  --color-mint-chip: #d1ffca;
+  --color-voltage-yellow: #fff100;
+
+  /* Typography */
+  --font-condensed: 'Bebas Neue', 'Anton', 'Barlow Condensed', sans-serif;
+  --font-sans: var(--font-inter), 'Inter', 'Söhne', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), 'Roboto Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Surfaces & Canvas */
+  --canvas: var(--color-warm-canvas);
+  --surface-card: var(--color-paper-white);
+  --surface-inverted: var(--color-carbon-black);
+  --surface-mist: var(--color-mist-gray);
   
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+  --fg: var(--color-carbon-black);
+  --fg-slate: var(--color-slate);
+  --accent-mint: var(--color-mint-chip);
+  --accent-yellow: var(--color-voltage-yellow);
+
+  --radius-cards: 32px;
+  --radius-buttons: 8px;
+  --radius-nav-pill: 48px;
+  --radius-tags: 64px;
+
+  color-scheme: light;
+}
+
+.dark {
+  /* Brutalist editorial light theme on warm gray canvas */
+  color-scheme: light;
+}
+
+@layer base {
+  html, body {
+    background-color: var(--color-warm-canvas);
+    color: var(--color-carbon-black);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Massive Uppercase Condensed Headlines (0.9 Line-Height) */
+  h1, h2, h3 {
+    font-family: var(--font-condensed);
+    color: var(--color-carbon-black);
+    font-weight: 700;
+    line-height: 0.9;
+    text-transform: uppercase;
+    letter-spacing: -0.03em;
+  }
+
+  h1 {
+    font-size: 80px;
+  }
+
+  h2 {
+    font-size: 64px;
+  }
+
+  h3 {
+    font-size: 48px;
   }
 }
 
 @layer utilities {
+  /* Brutalist Editorial Card (32px radius, Paper White fill, zero shadow, zero border) */
   .card {
-    @apply bg-card border border-border rounded-lg;
+    background-color: var(--color-paper-white);
+    color: var(--color-carbon-black);
+    border-radius: 32px;
+    padding: 32px;
+    border: none;
+    box-shadow: none;
   }
-  
-  .card-hover {
-    @apply transition-all duration-200 hover:shadow-sm hover:border-primary/20;
+
+  .card-inverted {
+    background-color: var(--color-carbon-black);
+    color: var(--color-paper-white);
+    border-radius: 32px;
+    padding: 32px;
+    border: none;
+    box-shadow: none;
+  }
+
+  /* Mint Chip Tag Pill (64px fully rounded radius, #d1ffca fill) */
+  .tag-mint {
+    background-color: var(--color-mint-chip);
+    color: var(--color-carbon-black);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    border-radius: 64px;
+    padding: 6px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: lowercase;
+  }
+
+  /* Primary CTA Button (8px radius, solid black fill, white text) */
+  .btn-primary {
+    background-color: var(--color-carbon-black);
+    color: var(--color-paper-white);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    font-weight: 500;
+    border-radius: 8px;
+    padding: 14px 24px;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: opacity 150ms ease;
+  }
+  .btn-primary:hover {
+    opacity: 0.88;
+  }
+
+  /* Secondary Ghost Border Button (4px radius, 1.5px slate border) */
+  .btn-ghost {
+    background-color: transparent;
+    border: 1.5px solid var(--color-slate);
+    color: var(--color-slate);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    font-weight: 500;
+    border-radius: 4px;
+    padding: 12px 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 150ms ease;
+  }
+  .btn-ghost:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  /* Nav Pill Capsule (48px radius, Paper White fill) */
+  .nav-pill {
+    background-color: var(--color-paper-white);
+    border-radius: 48px;
+    padding: 10px 24px;
   }
 }
 
-/* Scrollbar */
+/* Zero shadows in brutalist design philosophy */
+* {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: hsl(0 0% 96%);
+  background: var(--color-warm-canvas);
 }
-
 ::-webkit-scrollbar-thumb {
-  background: hsl(215 16% 47% / 0.3);
-  border-radius: 5px;
+  background: var(--color-carbon-black);
+  border-radius: 9999px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(215 16% 47% / 0.5);
-}
-
-/* Selection */
-/* Selection uses the browser default — the custom tint read as a stray
-   highlight over cards and metric text rather than as a selection. */
-
-/* Range Slider Thumb */
+/* Custom Range Input */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 14px;
   height: 14px;
-  background: hsl(215 25% 27%);
-  border-radius: 50%;
+  background: var(--color-carbon-black);
+  border-radius: 9999px;
   cursor: pointer;
-  box-shadow: 0 0 2px rgba(0,0,0,0.3);
 }
 input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  background: hsl(215 25% 27%);
-  border-radius: 50%;
+  background: var(--color-carbon-black);
+  border-radius: 9999px;
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 2px rgba(0,0,0,0.3);
 }
