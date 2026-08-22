@@ -50,11 +50,51 @@ const (
 	// Requiring clear separation avoids firing on someone resting a hand.
 	handRaiseMargin = 0.15
 
-	// How close two people's wrists must come, in shoulder widths, to read as
-	// a possible hand-off. Median separation between different people's wrists
-	// on this footage is 8.1 shoulder widths and only 2% fall within 1.0, so
-	// this sits deep in the tail rather than at a plausible-sounding number.
-	handProximityThreshold = 0.8
+	// How close two people's wrists must come, in TORSO lengths, to read as a
+	// possible hand-off.
+	//
+	// Scale used to be |leftShoulder.X - rightShoulder.X|, which is a
+	// horizontal projection rather than a size: it collapses toward zero as
+	// someone turns, and measured on one frame of this footage it ranged 9px
+	// to 72px across people at the same depth. Normalising by a quantity that
+	// varies 8x between subjects turned "0.8 shoulder widths" into a random
+	// per-person pixel threshold. Shoulder-to-hip length is invariant to that
+	// rotation, so it is the stable scale.
+	//
+	// Re-measured against torso length, cross-person wrist gaps run median
+	// 2.95 with p25 at 1.83, so 0.35 sits well inside the tail. Adjacent
+	// candidates at neighbouring terminals are legitimately close in image
+	// space, which is why a permissive bar fired constantly in a full room.
+	handProximityThreshold = 0.35
+
+	// A hand-off must persist across this many sampled frames. Wrist jitter is
+	// independent between frames and rarely repeats, whereas a real pass takes
+	// appreciable time. Single-frame firing was the other half of the noise:
+	// every report had StartSec == EndSec.
+	handProximityMinFrames = 2
+
+	// Absolute yaw at which a head is turned so far it is worth reporting
+	// regardless of that person's resting posture.
+	//
+	// Deviation-from-baseline alone has a blind spot: someone who sits turned
+	// for most of a segment makes that their own median, so they never deviate
+	// from it and are never flagged - exactly the fully-turned candidate a
+	// reviewer notices first. A documented seated-angle offset reached 0.65,
+	// so this sits above that: the nose is essentially over a shoulder.
+	headTurnAbsoluteThreshold = 0.80
+
+	// Above this share of the smaller person box lying inside the larger, the
+	// two "people" are one person detected twice rather than two individuals.
+	//
+	// YOLO duplicates a subject who is partly occluded or cut by the frame
+	// edge, tracking then assigns each box its own ID, and comparing one
+	// person's wrist against their own duplicate yields a near-zero gap - a
+	// guaranteed hand-off report. Measured on this footage: a duplicated
+	// subject at the frame edge had boxes [0,145,122,400] and [0,147,82,296],
+	// 87% containment and a wrist gap of 0.021, while two genuinely different
+	// candidates at adjacent terminals sat at 19% containment. The bar sits
+	// between those.
+	sameSubjectContainment = 0.50
 )
 
 // keypointIndex maps COCO joint names to their position in the array.
@@ -165,18 +205,27 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 	for i, tp := range poses {
 		yaw, ok := headYaw(tp.Pose)
 		deviation := yaw - baseline
-		turned := ok && math.Abs(deviation) > headTurnDeviationThreshold
+		// Two independent ways to be turned. Deviation catches someone who
+		// looks away from how they normally sit. The absolute test covers the
+		// case deviation cannot see: a candidate turned for most of the
+		// segment makes that posture their own median, so they never deviate
+		// from it however far round they are facing.
+		turned := ok && (math.Abs(deviation) > headTurnDeviationThreshold ||
+			math.Abs(yaw) > headTurnAbsoluteThreshold)
 
 		if turned {
+			// Magnitude is whichever test is more extreme, so a sustained
+			// absolute turn is not reported with a near-zero deviation.
+			magnitude := math.Max(math.Abs(deviation), math.Abs(yaw))
 			if consecutive == 0 {
 				startTime = tp.TimestampSec
 				startFrame = tp.FrameIdx
-				runPeak = math.Abs(deviation)
+				runPeak = magnitude
 				runPeakFrame = tp.FrameIdx
 			}
 			consecutive++
-			if math.Abs(deviation) > runPeak {
-				runPeak = math.Abs(deviation)
+			if magnitude > runPeak {
+				runPeak = magnitude
 				runPeakFrame = tp.FrameIdx
 			}
 			continue
@@ -294,24 +343,87 @@ func detectHandGestures(track PersonTrack, poses []TrackedPose) []Offence {
 // Wrist-to-wrist separation separates the cases properly: its median is 8.1
 // shoulder widths and only 2% of pairs come within 1.0, so closeness here is
 // genuinely unusual rather than the default state of a crowded room.
+// torsoLength is the shoulder-line-to-hip-line distance: a size measure that
+// survives someone turning in their seat, unlike horizontal shoulder spread.
+func torsoLength(pose YOLOPose) (float64, bool) {
+	lSho, okL := joint(pose, "left_shoulder")
+	rSho, okR := joint(pose, "right_shoulder")
+	if !okL || !okR {
+		return 0, false
+	}
+	shoulderY := (lSho.Y + rSho.Y) / 2
+
+	var hipYs []float64
+	if lHip, ok := joint(pose, "left_hip"); ok {
+		hipYs = append(hipYs, lHip.Y)
+	}
+	if rHip, ok := joint(pose, "right_hip"); ok {
+		hipYs = append(hipYs, rHip.Y)
+	}
+	if len(hipYs) == 0 {
+		return 0, false
+	}
+	hipY := 0.0
+	for _, y := range hipYs {
+		hipY += y
+	}
+	hipY /= float64(len(hipYs))
+
+	length := math.Abs(hipY - shoulderY)
+	if length < 1 {
+		return 0, false
+	}
+	return length, true
+}
+
+// sameSubject reports whether two person boxes are one individual detected
+// twice. Containment rather than IoU: a duplicate is typically nested inside
+// the larger box, which drags IoU down (0.39 in the measured case) while
+// containment stays decisive (0.87).
+func sameSubject(a, b []int) bool {
+	if len(a) != 4 || len(b) != 4 {
+		return false
+	}
+	x1, y1 := math.Max(float64(a[0]), float64(b[0])), math.Max(float64(a[1]), float64(b[1]))
+	x2, y2 := math.Min(float64(a[2]), float64(b[2])), math.Min(float64(a[3]), float64(b[3]))
+	if x2 <= x1 || y2 <= y1 {
+		return false
+	}
+	inter := (x2 - x1) * (y2 - y1)
+	areaA := float64((a[2] - a[0]) * (a[3] - a[1]))
+	areaB := float64((b[2] - b[0]) * (b[3] - b[1]))
+	smaller := math.Min(areaA, areaB)
+	if smaller <= 0 {
+		return false
+	}
+	return inter/smaller > sameSubjectContainment
+}
+
+// detectHandProximity reports one person's hands coming close to another's.
+//
+// Reports one finding per pair, attributed to the lower track ID, so a single
+// contact is not reported twice from both sides.
 func detectHandProximity(track PersonTrack, poses []TrackedPose, posesByTrack map[string][]TrackedPose) []Offence {
-	var offences []Offence
+	// frames on which this person's wrists were close to each other person's
+	type contact struct {
+		frames []int
+		times  []float64
+		peak   float64
+		peakAt int
+		peakTs float64
+	}
+	contacts := map[string]*contact{}
 
 	for _, tp := range poses {
-		lSho, okL := joint(tp.Pose, "left_shoulder")
-		rSho, okR := joint(tp.Pose, "right_shoulder")
-		if !okL || !okR {
-			continue
-		}
-		shoulderWidth := math.Abs(lSho.X - rSho.X)
-		if shoulderWidth < 1 {
+		scale, ok := torsoLength(tp.Pose)
+		if !ok {
 			continue
 		}
 
 		for _, side := range []string{"left_wrist", "right_wrist"} {
 			wrist, ok := joint(tp.Pose, side)
 			if !ok {
-				continue
+				continue // occluded hands stay unreported rather than guessed at
 			}
 
 			for otherID, otherPoses := range posesByTrack {
@@ -322,31 +434,60 @@ func detectHandProximity(track PersonTrack, poses []TrackedPose, posesByTrack ma
 					if otp.FrameIdx != tp.FrameIdx {
 						continue
 					}
+					if sameSubject(tp.Pose.BBox, otp.Pose.BBox) {
+						break // same person under two track IDs
+					}
 					for _, oside := range []string{"left_wrist", "right_wrist"} {
 						ow, ook := joint(otp.Pose, oside)
 						if !ook {
 							continue
 						}
-						gap := math.Hypot(wrist.X-ow.X, wrist.Y-ow.Y) / shoulderWidth
+						gap := math.Hypot(wrist.X-ow.X, wrist.Y-ow.Y) / scale
 						if gap > handProximityThreshold {
 							continue
 						}
-						offences = append(offences, Offence{
-							Type:       "hand_proximity",
-							Label:      fmt.Sprintf("Hands close to %s — possible hand-off", otherID),
-							TrackID:    track.TrackID,
-							StartSec:   tp.TimestampSec,
-							EndSec:     tp.TimestampSec,
-							FrameIdx:   tp.FrameIdx,
-							Confidence: math.Min(wrist.Conf, ow.Conf),
-							Count:      2,
-						})
-						return offences // one report per person is enough
+						c := contacts[otherID]
+						if c == nil {
+							c = &contact{peak: math.MaxFloat64}
+							contacts[otherID] = c
+						}
+						if n := len(c.frames); n == 0 || c.frames[n-1] != tp.FrameIdx {
+							c.frames = append(c.frames, tp.FrameIdx)
+							c.times = append(c.times, tp.TimestampSec)
+						}
+						if gap < c.peak {
+							c.peak = gap
+							c.peakAt = tp.FrameIdx
+							c.peakTs = tp.TimestampSec
+						}
 					}
 					break
 				}
 			}
 		}
+	}
+
+	var offences []Offence
+	for otherID, c := range contacts {
+		if len(c.frames) < handProximityMinFrames {
+			continue // a single frame is jitter, not a hand-off
+		}
+		// Attribute the pair once, to the lower ID, so the reciprocal
+		// detection on the other track does not duplicate it.
+		if track.TrackID > otherID {
+			continue
+		}
+		offences = append(offences, Offence{
+			Type:        "hand_proximity",
+			Label:       fmt.Sprintf("Hands close to %s over %d frames - possible hand-off", otherID, len(c.frames)),
+			TrackID:     track.TrackID,
+			StartSec:    c.times[0],
+			EndSec:      c.times[len(c.times)-1],
+			FrameIdx:    c.peakAt,
+			Confidence:  math.Min(1.0, (handProximityThreshold-c.peak)/handProximityThreshold),
+			DurationSec: c.times[len(c.times)-1] - c.times[0],
+			Count:       2,
+		})
 	}
 
 	return offences
