@@ -50,9 +50,11 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 		log.Printf("[DEBUG] Event %d has %d frames to process", event.EventID, len(eventFrames))
 
 		// Run person detection and tracking (Module 8)
+		var eventPoses map[string][]TrackedPose
 		if detector != nil {
-			personTracks := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir, tracker)
+			personTracks, poseFrames := detectAndTrackPersons(event, eventFrames, framesDir, header.VideoID, detector, header, outDir, tracker)
 			enrichedEvent.PersonTracks = personTracks
+			eventPoses = assignPosesToTracks(personTracks, poseFrames)
 		} else {
 			// Mock mode: generate fake person tracks
 			enrichedEvent.PersonTracks = generateMockPersonTracks(event, eventFrames)
@@ -72,7 +74,30 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 		enrichedEvent.DetectionSummary = buildDetectionSummary(enrichedEvent.PersonTracks, enrichedEvent.ObjectDetections)
 
 		// Classify concrete offences from the detections gathered above.
-		enrichedEvent.Offences = classifyOffences(event, enrichedEvent, outDir)
+		enrichedEvent.Offences = classifyOffences(event, enrichedEvent, outDir, eventPoses)
+
+		// Keypoint-derived micro-motions: head turns, signalling, reaching
+		// toward a neighbour. These need per-joint positions, so they can
+		// only be computed where pose ran.
+		if len(eventPoses) > 0 {
+			enrichedEvent.Offences = append(enrichedEvent.Offences,
+				analyseMicroMotions(enrichedEvent.PersonTracks, eventPoses)...)
+		}
+
+		// Ensure every offence has a snapshot, falling back to the raw frame
+		// if an annotated still wasn't explicitly generated.
+		for i := range enrichedEvent.Offences {
+			if enrichedEvent.Offences[i].Snapshot == "" {
+				fIdx := enrichedEvent.Offences[i].FrameIdx
+				if fIdx == 0 {
+					fIdx = event.StartFrameIdx
+				}
+				rawFramePath := filepath.Join(framesDir, fmt.Sprintf("frame_%07d.jpg", fIdx))
+				if _, err := os.Stat(rawFramePath); err == nil {
+					enrichedEvent.Offences[i].Snapshot = filepath.ToSlash(rawFramePath)
+				}
+			}
+		}
 
 		enriched = append(enriched, enrichedEvent)
 	}
@@ -121,10 +146,10 @@ func getFrameROIs(eventFrames []FrameROIs, frameIdx int) (FrameROIs, bool) {
 }
 
 // detectAndTrackPersons runs person detection and ByteTrack-style tracking
-func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string, tracker *ByteTracker) []PersonTrack {
+func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, outDir string, tracker *ByteTracker) ([]PersonTrack, []PoseFrame) {
 	if detector == nil {
 		// Mock mode - generate realistic person tracks
-		return generateMockPersonTracks(event, eventFrames)
+		return generateMockPersonTracks(event, eventFrames), nil
 	}
 
 	// The tracker is owned by the caller and shared across every event in
@@ -134,6 +159,7 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 	tracker.ExpireBefore(event.Start - maxTrackGapSeconds)
 
 	trackBBoxes := make(map[int][]BBox)
+	var poseFrames []PoseFrame
 
 	// Create annotated frames directory
 	annotatedDir := filepath.Join(outDir, "annotated")
@@ -201,6 +227,19 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 			}
 		}
 
+		// Body keypoints for this frame. Run on the full frame rather than
+		// per-ROI: a turned head or an outstretched arm routinely crosses
+		// the ROI boundary motion detection drew around the body.
+		if people, err := detector.DetectPose(framePath); err != nil {
+			log.Printf("[WARN] Pose failed for frame %d: %v", frameIdx, err)
+		} else if len(people) > 0 {
+			poseFrames = append(poseFrames, PoseFrame{
+				FrameIdx:     frameIdx,
+				TimestampSec: float64(frameIdx) / header.FPS,
+				People:       people,
+			})
+		}
+
 		// Update tracker with person detections
 		activeTracks := tracker.Update(detections)
 
@@ -256,7 +295,7 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 		personTracks = append(personTracks, track)
 	}
 
-	return personTracks
+	return personTracks, poseFrames
 }
 
 // detectObjects runs object detection (phone, paper, etc.)
@@ -412,6 +451,10 @@ const (
 	// this gap is unwatched footage; beyond it, matching on position alone
 	// is guesswork rather than tracking.
 	maxTrackGapSeconds = 30.0
+	// How close a wrist must be to an object, in shoulder widths, to count
+	// as holding it. Roughly an arm's reach of the hand itself — tight
+	// enough that merely sitting beside the object does not qualify.
+	exchangeWristRadius = 0.9
 )
 
 // Deliberately narrow. Classes like "remote" and "laptop" fired constantly on
@@ -570,37 +613,81 @@ func detectCrowdDisturbance(tracks []PersonTrack, minPersons int) []Offence {
 // detectObjectExchange flags a prohibited object appearing while two or more
 // people are close together — the hand-off pattern (passing a chit or phone).
 // This is a proximity heuristic, not a verified hand-to-hand observation.
-func detectObjectExchange(tracks []PersonTrack, objects []ObjectDetection) []Offence {
+func detectObjectExchange(tracks []PersonTrack, objects []ObjectDetection, posesByTrack map[string][]TrackedPose) []Offence {
 	var offences []Offence
+
+	// Exchange requires hands. An earlier version asked only whether the
+	// object's box overlapped two person boxes (padded outward by a quarter
+	// of their width), which in a full exam hall is true of almost any
+	// object: candidates sit shoulder to shoulder, so their boxes already
+	// overlap each other heavily and a phone near anyone appeared to be
+	// "between two people". That reported crowding as a hand-off.
+	//
+	// A transfer has a specific physical signature — the object close to a
+	// wrist of one person AND a wrist of another. Without keypoints for both
+	// parties nothing is claimed, because from boxes alone "two people near
+	// a phone" and "two people passing a phone" are indistinguishable.
+	if len(posesByTrack) == 0 {
+		return nil
+	}
 
 	for _, obj := range objects {
 		for _, ob := range obj.BBoxes {
-			var near []string
-			for _, track := range tracks {
-				for _, pb := range track.BBoxes {
-					if pb.FrameIdx != ob.FrameIdx {
+			objCX := float64(ob.X1+ob.X2) / 2
+			objCY := float64(ob.Y1+ob.Y2) / 2
+
+			var handsNear []string
+			for trackID, poses := range posesByTrack {
+				for _, tp := range poses {
+					if tp.FrameIdx != ob.FrameIdx {
 						continue
 					}
-					// Expand the person box slightly: a passed object sits
-					// between two people rather than inside either one.
-					pad := (pb.X2 - pb.X1) / 4
-					if ob.X2 >= pb.X1-pad && ob.X1 <= pb.X2+pad &&
-						ob.Y2 >= pb.Y1-pad && ob.Y1 <= pb.Y2+pad {
-						near = append(near, track.TrackID)
+					lSho, okL := joint(tp.Pose, "left_shoulder")
+					rSho, okR := joint(tp.Pose, "right_shoulder")
+					if !okL || !okR {
+						break
+					}
+					// Scale the tolerance to the person, so someone at the
+					// back of the hall is judged the same as one in front.
+					shoulderWidth := math.Abs(lSho.X - rSho.X)
+					if shoulderWidth < 1 {
+						break
+					}
+					for _, side := range []string{"left_wrist", "right_wrist"} {
+						wrist, ok := joint(tp.Pose, side)
+						if !ok {
+							continue
+						}
+						if math.Hypot(wrist.X-objCX, wrist.Y-objCY)/shoulderWidth < exchangeWristRadius {
+							handsNear = append(handsNear, trackID)
+							break
+						}
 					}
 					break
 				}
 			}
-			if len(near) >= 2 {
+
+			// Two *different* people must each have a hand at the object.
+			unique := map[string]bool{}
+			for _, id := range handsNear {
+				unique[id] = true
+			}
+			if len(unique) >= 2 {
+				ids := make([]string, 0, len(unique))
+				for id := range unique {
+					ids = append(ids, id)
+				}
+				sort.Strings(ids)
 				offences = append(offences, Offence{
 					Type:       "object_exchange",
-					Label:      fmt.Sprintf("Possible %s exchange between %d people", prohibitedLabel(obj.ObjectType), len(near)),
+					Label:      fmt.Sprintf("%s at the hands of %s and %s (possible hand-off)", prohibitedLabel(obj.ObjectType), ids[0], ids[1]),
+					TrackID:    ids[0],
 					StartSec:   ob.TimestampSec,
 					EndSec:     ob.TimestampSec,
 					FrameIdx:   ob.FrameIdx,
 					Confidence: ob.Confidence,
 					BBox:       []int{ob.X1, ob.Y1, ob.X2, ob.Y2},
-					Count:      len(near),
+					Count:      len(unique),
 				})
 				break // one report per object type is enough
 			}
@@ -614,7 +701,7 @@ func detectObjectExchange(tracks []PersonTrack, objects []ObjectDetection) []Off
 // prohibited objects, loitering, crowd disturbance, object exchange, and
 // motion anomalies. Each offence carries the frame it happened on, and where
 // an auto-captured still exists for that frame it is attached as evidence.
-func classifyOffences(event Event, ev EnrichedEvent, outDir string) []Offence {
+func classifyOffences(event Event, ev EnrichedEvent, outDir string, posesByTrack map[string][]TrackedPose) []Offence {
 	var offences []Offence
 
 	// ---- prohibited objects (phones, chits/paper, laptops) ----
@@ -644,7 +731,7 @@ func classifyOffences(event Event, ev EnrichedEvent, outDir string) []Offence {
 	}
 
 	// ---- object exchange (chit/phone passed between people) ----
-	offences = append(offences, detectObjectExchange(ev.PersonTracks, ev.ObjectDetections)...)
+	offences = append(offences, detectObjectExchange(ev.PersonTracks, ev.ObjectDetections, posesByTrack)...)
 
 	// ---- loitering (e.g. invigilator parked beside a candidate) ----
 	offences = append(offences, detectLoitering(ev.PersonTracks, loiteringMinSeconds)...)

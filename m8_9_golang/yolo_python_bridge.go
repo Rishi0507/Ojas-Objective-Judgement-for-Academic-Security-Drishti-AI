@@ -23,9 +23,27 @@ type YOLOPythonBridge struct {
 // YOLODetectionResponse from Python service
 type YOLODetectionResponse struct {
 	Detections []YOLODetection `json:"detections,omitempty"`
+	People     []YOLOPose      `json:"people,omitempty"`
 	Error      string          `json:"error,omitempty"`
 	Status     string          `json:"status,omitempty"`
 	Model      string          `json:"model,omitempty"`
+}
+
+// YOLOPose is one person's skeleton for a frame.
+type YOLOPose struct {
+	BBox       []int         `json:"bbox"` // [x1, y1, x2, y2]
+	Confidence float64       `json:"confidence"`
+	Keypoints  []YOLOKeypoint `json:"keypoints"`
+}
+
+// YOLOKeypoint is a single body joint. Conf matters as much as position:
+// an occluded joint is still reported, with a low confidence, and treating
+// those coordinates as real is the main way pose analysis goes wrong.
+type YOLOKeypoint struct {
+	Name string  `json:"name"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	Conf float64 `json:"conf"`
 }
 
 // YOLODetection from Python
@@ -132,6 +150,33 @@ func (b *YOLOPythonBridge) InferFrame(framePath string, roi []int) ([]YOLODetect
 	}
 	
 	return response.Detections, nil
+}
+
+// InferPose requests body keypoints for everyone in a frame.
+func (b *YOLOPythonBridge) InferPose(framePath string) ([]YOLOPose, error) {
+	if !b.ready {
+		return nil, fmt.Errorf("service not ready")
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if err := b.sendCommand(map[string]interface{}{
+		"action":     "pose",
+		"frame_path": framePath,
+	}); err != nil {
+		return nil, err
+	}
+
+	response, err := b.readResponse()
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != "" {
+		return nil, fmt.Errorf("pose error: %s", response.Error)
+	}
+
+	return response.People, nil
 }
 
 // AnnotateFrame requests frame annotation
