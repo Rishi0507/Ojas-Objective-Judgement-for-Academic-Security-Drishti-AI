@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { LayoutDashboard, Video, FileSearch, ShieldCheck, Settings } from 'lucide-react'
+import { LayoutDashboard, Video, FileSearch, ShieldCheck, Radio, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SettingsModal from './SettingsModal'
 
 interface SidebarProps {
   activeView: string
-  onViewChange: (view: 'dashboard' | 'analysis' | 'events' | 'ledger') => void
+  onViewChange: (view: 'dashboard' | 'analysis' | 'events' | 'ledger' | 'fleet') => void
 }
 
 const navItems = [
@@ -18,6 +18,8 @@ const navItems = [
   // pipeline concept and appear under Analysis.
   { id: 'events', icon: FileSearch, label: 'Findings' },
   { id: 'ledger', icon: ShieldCheck, label: 'Ledger' },
+  // Camera readiness across centres - operations, not review, so it sits last.
+  { id: 'fleet', icon: Radio, label: 'Cameras' },
 ]
 
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
