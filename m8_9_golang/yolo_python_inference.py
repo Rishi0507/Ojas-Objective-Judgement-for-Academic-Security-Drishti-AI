@@ -130,8 +130,8 @@ class YOLOInferenceService:
             class_name = det["class_name"]
             confidence = det["confidence"]
             
-            # Get color
-            color = colors.get(class_name, (255, 255, 0))  # Yellow default
+            # Get color (BGR order — cv2.rectangle expects (B, G, R), not (R, G, B))
+            color = colors.get(class_name, (0, 255, 255))  # Yellow default
             
             # Draw box
             cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
