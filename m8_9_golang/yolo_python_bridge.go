@@ -48,10 +48,14 @@ type YOLOKeypoint struct {
 
 // YOLODetection from Python
 type YOLODetection struct {
-	BBox       []int   `json:"bbox"`        // [x1, y1, x2, y2]
+	BBox       []int   `json:"bbox"` // [x1, y1, x2, y2]
 	ClassID    int     `json:"class_id"`
 	ClassName  string  `json:"class_name"`
 	Confidence float64 `json:"confidence"`
+	// Optional draw overrides, used for offence stills: Color is BGR and
+	// Label replaces the default "class conf" caption.
+	Color []int  `json:"color,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 // NewYOLOPythonBridge starts the Python YOLO service

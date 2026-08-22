@@ -139,6 +139,25 @@ func (d *YOLODetector) AnnotateFrame(framePath string, detections []Detection, o
 	return d.pythonBridge.AnnotateFrame(framePath, pythonDets, outputPath)
 }
 
+// AnnotateOffence renders the still shown against a single finding: the accused
+// person outlined in red and captioned, and nobody else drawn.
+//
+// The generic annotated frame boxes every person in green, which at thumbnail
+// size becomes an undifferentiated cluster that tells a reviewer nothing about
+// who is actually being accused — the point of the image is to answer "who,
+// and of what".
+func (d *YOLODetector) AnnotateOffence(framePath string, subject []int, label string, outputPath string) error {
+	if len(subject) != 4 {
+		return fmt.Errorf("subject bbox must be [x1,y1,x2,y2]")
+	}
+	return d.pythonBridge.AnnotateFrame(framePath, []YOLODetection{{
+		BBox:      subject,
+		ClassName: "subject",
+		Color:     []int{0, 0, 255}, // BGR red
+		Label:     label,
+	}}, outputPath)
+}
+
 // Close releases resources
 func (d *YOLODetector) Close() {
 	if d.pythonBridge != nil {
