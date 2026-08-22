@@ -437,76 +437,6 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
             </div>
           </div>
 
-          {!!eventData.offences?.length && (
-            <div className="card p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">
-                  Detected Offences
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    {eventData.offences.length} finding{eventData.offences.length === 1 ? '' : 's'}
-                  </span>
-                </h2>
-              </div>
-
-              <div className="space-y-3">
-                {eventData.offences.map((off, i) => {
-                  const style = OFFENCE_STYLES[off.type] ?? {
-                    label: off.type,
-                    cls: 'bg-muted text-foreground border-border',
-                  }
-                  return (
-                    <div key={i} className="flex gap-4 p-3 rounded-lg border border-border bg-background">
-                      {off.snapshot ? (
-                        <button
-                          onClick={() => setLightbox(off.snapshot!)}
-                          className="flex-shrink-0 w-32 aspect-video rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
-                          title="Click to enlarge the auto-captured evidence"
-                        >
-                          <img
-                            src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
-                            alt={off.label}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                      ) : (
-                        <div className="flex-shrink-0 w-32 aspect-video rounded border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
-                          No still captured
-                        </div>
-                      )}
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
-                            {style.label}
-                          </span>
-                          {off.trackId && (
-                            <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{off.trackId}</span>
-                          )}
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {(off.confidence * 100).toFixed(0)}% confidence
-                          </span>
-                        </div>
-                        <div className="font-medium text-sm mb-1">{off.label}</div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {formatTime(off.startSec)}
-                          {off.endSec > off.startSec && ` – ${formatTime(off.endSec)}`}
-                          {off.durationSec ? ` · ${off.durationSec.toFixed(0)}s stationary` : ''}
-                          {off.count ? ` · ${off.count} involved` : ''}
-                        </div>
-                        <button
-                          onClick={() => jumpTo(off.startSec)}
-                          className="mt-2 text-xs text-primary hover:underline font-medium"
-                        >
-                          Jump to this moment
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Evidence & Analysis</h2>
@@ -593,11 +523,9 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-4">Metadata</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold mb-4">Metadata</h2>
             <div className="space-y-2 text-sm">
               {[
                 ['Video ID', eventData.videoId],
@@ -615,8 +543,8 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
             </div>
           </div>
 
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-4">Quality Factors</h2>
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold mb-4">Quality Factors</h2>
             <div className="space-y-4">
               {[
                 { label: 'Camera Shake', value: eventData.qualityFactors.cameraShake },
@@ -638,6 +566,8 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                 )
               })}
             </div>
+          </div>
+
           </div>
 
           <div className="card p-6">
@@ -672,6 +602,78 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               Submit Feedback
             </button>
           </div>
+        </div>
+
+        <div className="space-y-6">
+          {!!eventData.offences?.length && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">
+                  Detected Offences
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    {eventData.offences.length} finding{eventData.offences.length === 1 ? '' : 's'}
+                  </span>
+                </h2>
+              </div>
+
+              <div className="space-y-3">
+                {eventData.offences.map((off, i) => {
+                  const style = OFFENCE_STYLES[off.type] ?? {
+                    label: off.type,
+                    cls: 'bg-muted text-foreground border-border',
+                  }
+                  return (
+                    <div key={i} className="flex gap-4 p-3 rounded-lg border border-border bg-background">
+                      {off.snapshot ? (
+                        <button
+                          onClick={() => setLightbox(off.snapshot!)}
+                          className="flex-shrink-0 w-32 aspect-video rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
+                          title="Click to enlarge the auto-captured evidence"
+                        >
+                          <img
+                            src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
+                            alt={off.label}
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex-shrink-0 w-32 aspect-video rounded border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                          No still captured
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
+                            {style.label}
+                          </span>
+                          {off.trackId && (
+                            <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{off.trackId}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {(off.confidence * 100).toFixed(0)}% confidence
+                          </span>
+                        </div>
+                        <div className="font-medium text-sm mb-1">{off.label}</div>
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {formatTime(off.startSec)}
+                          {off.endSec > off.startSec && ` – ${formatTime(off.endSec)}`}
+                          {off.durationSec ? ` · ${off.durationSec.toFixed(0)}s stationary` : ''}
+                          {off.count ? ` · ${off.count} involved` : ''}
+                        </div>
+                        <button
+                          onClick={() => jumpTo(off.startSec)}
+                          className="mt-2 text-xs text-primary hover:underline font-medium"
+                        >
+                          Jump to this moment
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

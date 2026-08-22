@@ -305,9 +305,9 @@ async function generateEventClips(
             '-pix_fmt', 'yuv420p',
             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
             '-movflags', '+faststart',
-            annotatedClipPath,
+            annPath,
           ], ROOT, jobId)
-          ev.annotatedClipUrl = path.relative(ROOT, annotatedClipPath).split(path.sep).join('/')
+          ev.annotatedClipUrl = path.relative(ROOT, annPath).split(path.sep).join('/')
         } catch (err: any) {
           console.error(`[clips] ${jobId} ${safeId} annotated failed:`, err?.message ?? err)
         } finally {
