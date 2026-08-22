@@ -453,6 +453,18 @@ const (
 	// During an exam the baseline is near-static, so three people moving in
 	// the same frame is already anomalous.
 	crowdMinPersons = 3
+	// Centroid drift, as a fraction of the person's own box width, before
+	// they count as moving. Measured on stationary people in this footage,
+	// frame-to-frame drift reaches 0.167 at p90 and 0.321 at p99 — purely
+	// from detector jitter. The previous 0.10 sat below p75, so 18% of
+	// perfectly still people registered as moving, and in a room of ten that
+	// is enough phantom movers to trip the three-person bar every frame.
+	crowdMoveThreshold = 0.35
+	// Consecutive sampled frames the crowd must keep moving for. Jitter is
+	// independent between frames so a chance alignment seldom repeats.
+	crowdMinFrames = 3
+	// Frames are sampled with gaps, so "consecutive" allows one sampling step.
+	crowdMaxFrameGap = 6
 	// How long a track may go unobserved and still be considered the same
 	// person when detection resumes. Detection only runs inside events, so
 	// this gap is unwatched footage; beyond it, matching on position alone
@@ -577,8 +589,8 @@ func detectCrowdDisturbance(tracks []PersonTrack, minPersons int) []Offence {
 			refW := float64(cur.X2-cur.X1) + 1
 			dx := float64((cur.X1+cur.X2)/2 - (prev.X1+prev.X2)/2)
 			dy := float64((cur.Y1+cur.Y2)/2 - (prev.Y1+prev.Y2)/2)
-			if math.Sqrt(dx*dx+dy*dy)/refW < 0.10 {
-				continue // below this, it's detector jitter rather than motion
+			if math.Sqrt(dx*dx+dy*dy)/refW < crowdMoveThreshold {
+				continue // below this it is box jitter, not the person moving
 			}
 			if movingPerFrame[cur.FrameIdx] == nil {
 				movingPerFrame[cur.FrameIdx] = make(map[string]bool)
@@ -588,16 +600,36 @@ func detectCrowdDisturbance(tracks []PersonTrack, minPersons int) []Offence {
 		}
 	}
 
-	var frames []int
+	var qualifying []int
 	for f, movers := range movingPerFrame {
 		if len(movers) >= minPersons {
-			frames = append(frames, f)
+			qualifying = append(qualifying, f)
 		}
+	}
+	if len(qualifying) == 0 {
+		return nil
+	}
+	sort.Ints(qualifying)
+
+	// Require the crowd to stay in motion across consecutive sampled frames.
+	// Residual jitter is independent between frames, so a chance alignment of
+	// several people rarely repeats — whereas a real disturbance persists.
+	var frames []int
+	run := 1
+	for i := 1; i <= len(qualifying); i++ {
+		contiguous := i < len(qualifying) && qualifying[i]-qualifying[i-1] <= crowdMaxFrameGap
+		if contiguous {
+			run++
+			continue
+		}
+		if run >= crowdMinFrames {
+			frames = append(frames, qualifying[i-run:i]...)
+		}
+		run = 1
 	}
 	if len(frames) == 0 {
 		return nil
 	}
-	sort.Ints(frames)
 
 	peak, peakFrame := 0, frames[0]
 	for _, f := range frames {
