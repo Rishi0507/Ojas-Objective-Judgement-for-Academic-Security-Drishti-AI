@@ -71,7 +71,7 @@ const OFFENCE_STYLES: Record<string, { label: string; cls: string }> = {
 }
 
 const feedbackOptions = [
-  { id: 'relevant', label: 'Relevant Event', icon: CheckCircle },
+  { id: 'relevant', label: 'Relevant Segment', icon: CheckCircle },
   { id: 'normal', label: 'Normal Behavior', icon: CheckSquare },
   { id: 'wrong_roi', label: 'Wrong ROI', icon: AlertCircle },
   { id: 'wrong_object', label: 'Wrong Object', icon: XCircle },
@@ -201,6 +201,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
       ? Math.max(0, absoluteSec - clipOffset)
       : absoluteSec
     video.play().catch(() => {})
+    video.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   /**
@@ -266,7 +267,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
           </button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Event <span className="font-serif italic">Details</span>
+              Segment <span className="font-serif italic">Details</span>
             </h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span className="font-mono">{eventData.id}</span>
@@ -346,7 +347,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   ) : (
                     <>
                       <Play className="w-4 h-4" strokeWidth={2} />
-                      Play Event
+                      Play Segment
                     </>
                   )}
                 </button>
@@ -389,8 +390,8 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               )}
               {!usingEventClip && (
                 <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                  No extracted clip for this event — playing the full recording. Re-process the
-                  video to generate per-event clips.
+                  No extracted clip for this segment — playing the full recording. Re-process the
+                  video to generate per-segment clips.
                 </div>
               )}
               {showBoundingBoxes && (
