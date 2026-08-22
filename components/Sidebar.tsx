@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { LayoutDashboard, Video, FileSearch, Settings } from 'lucide-react'
+import { LayoutDashboard, Video, FileSearch, ShieldCheck, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SettingsModal from './SettingsModal'
 
 interface SidebarProps {
   activeView: string
-  onViewChange: (view: 'dashboard' | 'analysis' | 'events') => void
+  onViewChange: (view: 'dashboard' | 'analysis' | 'events' | 'ledger') => void
 }
 
 const navItems = [
@@ -17,6 +17,7 @@ const navItems = [
   // what a reviewer works through. The motion segments they sit inside are a
   // pipeline concept and appear under Analysis.
   { id: 'events', icon: FileSearch, label: 'Findings' },
+  { id: 'ledger', icon: ShieldCheck, label: 'Ledger' },
 ]
 
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
@@ -29,9 +30,9 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
         <button 
           onClick={() => onViewChange('dashboard')}
           className="w-10 h-10 bg-paper-white rounded-[16px] flex items-center justify-center font-condensed text-xl font-bold text-carbon-black transition-transform hover:scale-105"
-          title="AI for Business"
+          title="DrishtiAI"
         >
-          AI
+          DA
         </button>
       </div>
 

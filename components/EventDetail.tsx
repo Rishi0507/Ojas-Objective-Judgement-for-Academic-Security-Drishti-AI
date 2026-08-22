@@ -170,6 +170,55 @@ interface OffenceData {
 }
 
 /**
+ * Feature 10.4 — how unusual this finding's own part of the frame was.
+ *
+ * Rendered for both outcomes, because both carry information. A high z-score
+ * says the scene corroborates the geometry. A zero says the detector fired
+ * while that region was behaving exactly as it normally does for this video -
+ * the more interesting case, and the one a reviewer should weigh hardest.
+ *
+ * Which group a finding lands in varies by footage, so neither is a proxy for
+ * "true" or "false": on one test clip every head turn sat in a normal region,
+ * on another most sat in abnormal ones. It is context for a human, not a
+ * verdict.
+ */
+function RegionBadge({ offence }: { offence: { region?: string; regionZ?: number } }) {
+  if (!offence.region) return null
+  const z = offence.regionZ ?? 0
+
+  if (z !== 0) {
+    // Module 10.4 floors sigma at 1e-3, so a region that barely moved during
+    // calibration yields enormous z-scores - this footage produces 47.9 in a
+    // near-static cell. That is not 48 standard deviations of a well-estimated
+    // distribution, it is a division by an almost-zero baseline, and printing
+    // the figure would be false precision. Past 10 the magnitude stops meaning
+    // anything, so it is banded instead.
+    const extreme = Math.abs(z) >= 10
+    return (
+      <span
+        title={
+          extreme
+            ? `Region ${offence.region} was far outside its normal range. The exact multiple (${z.toFixed(1)}) is not meaningful here: this region was almost completely static during calibration, so its baseline variance sits at the floor and any motion divides into a very large number.`
+            : `Region ${offence.region} departed from its own learned baseline by ${z.toFixed(1)} standard deviations at this moment.`
+        }
+        className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono border bg-primary/5 text-primary border-primary/20"
+      >
+        {offence.region} · {extreme ? 'well above normal' : `${z.toFixed(1)}σ above normal`}
+      </span>
+    )
+  }
+
+  return (
+    <span
+      title={`Region ${offence.region} was within its normal range for this video when this was flagged. The detector fired, but the scene itself was not behaving unusually.`}
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono border bg-muted text-muted-foreground border-border"
+    >
+      {offence.region} · region normal
+    </span>
+  )
+}
+
+/**
  * CLIP's verdict as a badge. Mirrors EventsList: nothing is shown for
  * "supported", because a tick on most of the list would read as corroboration
  * the model cannot actually give.
@@ -843,7 +892,10 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                           <Clock className="w-4 h-4 text-slate" />
                           <span>{formatTime(off.startSec)}</span>
                         </div>
-                        <ClipBadge offence={off} />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <ClipBadge offence={off} />
+                          <RegionBadge offence={off} />
+                        </div>
                       </div>
                     </div>
                   )
@@ -889,6 +941,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                         {(off.confidence * 100).toFixed(0)}% confidence
                       </span>
                       <ClipBadge offence={off} />
+                      <RegionBadge offence={off} />
                     </div>
                     <h3 className="text-xl font-bold leading-snug text-foreground">{off.label}</h3>
 

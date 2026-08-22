@@ -22,6 +22,8 @@ export type LedgerKind =
   | 'video_uploaded'
   | 'artifact_derived'
   | 'verdict_recorded'
+  /** An incident report was issued. Its own hash goes in the chain it describes. */
+  | 'report_generated'
   | 'anchor_published'
 
 /** The assertion an actor signs. Chain position is deliberately absent. */
