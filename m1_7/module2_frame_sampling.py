@@ -172,10 +172,28 @@ def run_sampling(
     out_dir: Optional[str] = None,
     save_jpg_quality: int = 90,
     save_manifest: bool = True,
+    max_width: int = 640,
 ) -> dict:
     """
     Run frame sampling end-to-end. Optionally writes each sampled frame
     as a JPG to `out_dir` and a manifest.json listing all sampled frames.
+
+    Processing resolution
+    ---------------------
+    Frames wider than `max_width` are downscaled (aspect preserved) before
+    being written. Every later stage reads these JPGs, so this is the single
+    highest-leverage knob in the pipeline: cost in Modules 3-6 scales with
+    pixel count, and dense optical flow (Module 3's dominant cost) computes
+    a vector per pixel. Halving the width quarters the work for all of them
+    at once. 720p -> 640 wide is a 4x reduction; motion/ROI detection at
+    640px is entirely standard for CCTV analytics, since we are localizing
+    "someone moved at this desk", not reading fine detail.
+
+    The manifest's embedded header is rewritten with the *processing*
+    width/height so Modules 3-7 stay internally consistent (ROI coordinates,
+    frame dimensions). The original dimensions are preserved alongside as
+    source_width/source_height plus the proc_scale factor, for anything that
+    needs to map coordinates back to the source video.
 
     Returns a summary dict with sampling statistics.
     """
@@ -185,6 +203,14 @@ def run_sampling(
     video_id = header.get("video_id", "video")
     native_fps = float(header["fps"])
     native_frame_count = int(header["frame_count"])
+    source_width = int(header["width"])
+    source_height = int(header["height"])
+
+    proc_scale = 1.0
+    if max_width and source_width > max_width:
+        proc_scale = max_width / source_width
+    proc_width = int(round(source_width * proc_scale))
+    proc_height = int(round(source_height * proc_scale))
 
     stride = max(1, round(native_fps / target_fps))
     expected = max(1, native_frame_count // stride)
@@ -200,6 +226,9 @@ def run_sampling(
     sampled = 0
     for frame_idx, ts, frame in sample_frames(header, target_fps=target_fps):
         if out_path:
+            if proc_scale < 1.0:
+                frame = cv2.resize(frame, (proc_width, proc_height),
+                                   interpolation=cv2.INTER_AREA)
             jpg_name = f"{video_id}__f{frame_idx:07d}__t{ts:08.3f}.jpg"
             jpg_path = out_path / jpg_name
             cv2.imwrite(str(jpg_path), frame,
@@ -219,13 +248,27 @@ def run_sampling(
         "expected_sampled": expected,
         "actual_sampled": sampled,
         "out_dir": str(out_path) if out_path else None,
+        "source_resolution": [source_width, source_height],
+        "processing_resolution": [proc_width, proc_height],
+        "proc_scale": round(proc_scale, 6),
     }
 
     if out_path and save_manifest:
+        # Downstream modules (3-7) read dimensions from this embedded header
+        # and work entirely in processing space, so report the processing
+        # resolution here — keeping the source dimensions available under
+        # separate keys for anything mapping coordinates back to the video.
+        proc_header = dict(header)
+        proc_header["width"] = proc_width
+        proc_header["height"] = proc_height
+        proc_header["source_width"] = source_width
+        proc_header["source_height"] = source_height
+        proc_header["proc_scale"] = round(proc_scale, 6)
+
         manifest_path = out_path / "manifest.json"
         with open(manifest_path, "w") as f:
             json.dump({
-                "header": header,
+                "header": proc_header,
                 "summary": summary,
                 "frames": manifest_entries,
             }, f, indent=2)
@@ -257,6 +300,14 @@ def main():
         "--jpg-quality", type=int, default=90,
         help="JPEG quality for saved frames (1-100). Default 90."
     )
+    parser.add_argument(
+        "--max-width", type=int, default=640,
+        help="Downscale sampled frames to at most this width, preserving "
+             "aspect ratio (default 640). This is the pipeline's main "
+             "speed knob: Modules 3-6 cost scales with pixel count, so "
+             "720p -> 640 is roughly 4x less work for all of them. "
+             "Pass 0 to keep the source resolution."
+    )
     args = parser.parse_args()
 
     summary = run_sampling(
@@ -264,6 +315,7 @@ def main():
         target_fps=args.target_fps,
         out_dir=args.out_dir,
         save_jpg_quality=args.jpg_quality,
+        max_width=args.max_width,
     )
 
     print(json.dumps(summary, indent=2))
