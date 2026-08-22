@@ -103,7 +103,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
     ).length
     return {
       hour: timeSlot,
-      events: eventsInSlot * 10
+      events: eventsInSlot
     }
   }) : []
 
