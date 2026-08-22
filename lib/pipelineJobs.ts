@@ -110,6 +110,24 @@ function watchProgressFile(
   }, 1500)
 }
 
+/** Rewrites any path pointing into pipeline_out/ to be app-root relative. */
+function toAppRelative(p: string): string {
+  const normalized = p.replace(/\\/g, '/')
+  const idx = normalized.indexOf('pipeline_out/')
+  return idx >= 0 ? normalized.slice(idx) : normalized
+}
+
+function normalizeAssetPaths(enriched: any): void {
+  for (const ev of enriched?.events ?? []) {
+    if (Array.isArray(ev.snapshots)) {
+      ev.snapshots = ev.snapshots.map(toAppRelative)
+    }
+    for (const off of ev.offences ?? []) {
+      if (off.snapshot) off.snapshot = toAppRelative(off.snapshot)
+    }
+  }
+}
+
 async function probeCodec(videoPath: string, streamSelector: 'v:0' | 'a:0'): Promise<string | null> {
   try {
     const out = await runCommand('ffprobe', [
@@ -351,6 +369,12 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
     // browser can decode (see generatePlaybackProxy).
     enriched.pipeline_dir = jobId
     enriched.source_video_path = path.relative(ROOT, proxyPath ?? videoPath).split(path.sep).join('/')
+
+    // The Go backend records snapshot paths relative to its own working
+    // directory (m8_9_golang), so they arrive as "../pipeline_out/...".
+    // Rewrite them app-relative so /api/stream and /api/snapshot can resolve
+    // them the same way as every other asset.
+    normalizeAssetPaths(enriched)
 
     writeStatus(jobId, { message: 'Extracting event clips...', percent: 99 })
     await generateEventClips(outDir, enriched, jobId)

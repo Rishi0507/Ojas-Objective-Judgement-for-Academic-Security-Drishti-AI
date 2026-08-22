@@ -41,6 +41,30 @@ interface EventData {
   object_detections?: any[]
   motionCharacter?: string
   jerkScore?: number
+  offences?: OffenceData[]
+  snapshots?: string[]
+}
+
+interface OffenceData {
+  type: string
+  label: string
+  trackId?: string
+  startSec: number
+  endSec: number
+  frameIdx: number
+  confidence: number
+  bbox?: number[]
+  durationSec?: number
+  count?: number
+  snapshot?: string
+}
+
+const OFFENCE_STYLES: Record<string, { label: string; cls: string }> = {
+  prohibited_object: { label: 'Prohibited Object', cls: 'bg-red-50 text-red-700 border-red-200' },
+  object_exchange: { label: 'Object Exchange', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  loitering: { label: 'Loitering', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  crowd_disturbance: { label: 'Crowd Disturbance', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  motion_anomaly: { label: 'Motion Anomaly', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
 }
 
 const feedbackOptions = [
@@ -68,6 +92,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [currentTime, setCurrentTime] = useState(0)
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0)
   const [snapshotNote, setSnapshotNote] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -163,6 +188,16 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const getSeekPosition = () => {
     if (!eventData || !eventData.duration) return 0
     return ((currentTime - eventData.start) / eventData.duration) * 100
+  }
+
+  /** Seeks the player to an absolute time in the source recording. */
+  const jumpTo = (absoluteSec: number) => {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = usingEventClip
+      ? Math.max(0, absoluteSec - clipOffset)
+      : absoluteSec
+    video.play().catch(() => {})
   }
 
   /**
@@ -398,6 +433,76 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
             </div>
           </div>
 
+          {!!eventData.offences?.length && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">
+                  Detected Offences
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    {eventData.offences.length} finding{eventData.offences.length === 1 ? '' : 's'}
+                  </span>
+                </h2>
+              </div>
+
+              <div className="space-y-3">
+                {eventData.offences.map((off, i) => {
+                  const style = OFFENCE_STYLES[off.type] ?? {
+                    label: off.type,
+                    cls: 'bg-muted text-foreground border-border',
+                  }
+                  return (
+                    <div key={i} className="flex gap-4 p-3 rounded-lg border border-border bg-background">
+                      {off.snapshot ? (
+                        <button
+                          onClick={() => setLightbox(off.snapshot!)}
+                          className="flex-shrink-0 w-32 aspect-video rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary transition-all"
+                          title="Click to enlarge the auto-captured evidence"
+                        >
+                          <img
+                            src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
+                            alt={off.label}
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex-shrink-0 w-32 aspect-video rounded border border-dashed border-border flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                          No still captured
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={cn('px-2 py-0.5 rounded text-xs font-bold border', style.cls)}>
+                            {style.label}
+                          </span>
+                          {off.trackId && (
+                            <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{off.trackId}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {(off.confidence * 100).toFixed(0)}% confidence
+                          </span>
+                        </div>
+                        <div className="font-medium text-sm mb-1">{off.label}</div>
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {formatTime(off.startSec)}
+                          {off.endSec > off.startSec && ` – ${formatTime(off.endSec)}`}
+                          {off.durationSec ? ` · ${off.durationSec.toFixed(0)}s stationary` : ''}
+                          {off.count ? ` · ${off.count} involved` : ''}
+                        </div>
+                        <button
+                          onClick={() => jumpTo(off.startSec)}
+                          className="mt-2 text-xs text-primary hover:underline font-medium"
+                        >
+                          Jump to this moment
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Evidence & Analysis</h2>
@@ -565,6 +670,39 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
           </div>
         </div>
       </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8"
+          onClick={() => setLightbox(null)}
+        >
+          <div className="max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
+              alt="Offence evidence"
+              className="w-full rounded-lg border border-border"
+            />
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-xs text-white/70 font-mono truncate">{lightbox.split('/').pop()}</span>
+              <div className="flex gap-2">
+                <a
+                  href={`/api/snapshot?path=${encodeURIComponent(lightbox)}`}
+                  download
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+                >
+                  Download
+                </a>
+                <button
+                  onClick={() => setLightbox(null)}
+                  className="px-3 py-1.5 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

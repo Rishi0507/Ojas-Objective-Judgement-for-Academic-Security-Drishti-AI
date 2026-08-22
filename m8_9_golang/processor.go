@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // processEvents enriches events with person detection and object detection
@@ -53,7 +54,8 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 
 		// Run object detection (Module 9)
 		if detector != nil {
-			objectDetections := detectObjects(event, eventFrames, framesDir, header.VideoID, detector, header, enrichedEvent.PersonTracks)
+			snapshotDir := filepath.Join(outDir, "snapshots")
+			objectDetections := detectObjects(event, eventFrames, framesDir, header.VideoID, detector, header, enrichedEvent.PersonTracks, snapshotDir)
 			enrichedEvent.ObjectDetections = objectDetections
 		} else {
 			// Mock mode: generate fake object detections
@@ -62,6 +64,9 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 
 		// Build detection summary
 		enrichedEvent.DetectionSummary = buildDetectionSummary(enrichedEvent.PersonTracks, enrichedEvent.ObjectDetections)
+
+		// Classify concrete offences from the detections gathered above.
+		enrichedEvent.Offences = classifyOffences(event, enrichedEvent, outDir)
 
 		enriched = append(enriched, enrichedEvent)
 	}
@@ -237,7 +242,7 @@ func detectAndTrackPersons(event Event, eventFrames []FrameROIs, framesDir strin
 }
 
 // detectObjects runs object detection (phone, paper, etc.)
-func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, personTracks []PersonTrack) []ObjectDetection {
+func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, videoID string, detector *YOLODetector, header *Header, personTracks []PersonTrack, snapshotDir string) []ObjectDetection {
 	if detector == nil {
 		// Mock mode
 		return generateMockObjectDetections(Event{}, eventFrames)
@@ -245,17 +250,42 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 	
 	objectBBoxes := make(map[string][]BBox) // object_type -> bboxes
 
-	for _, frame := range eventFrames {
-		// Build frame path
-		framePath := filepath.Join(framesDir, fmt.Sprintf("frame_%05d.jpg", frame.FrameIdx))
-		if _, err := os.Stat(framePath); os.IsNotExist(err) {
+	// Event-level ROI fallback, same as person detection uses.
+	eventROI := image.Rectangle{}
+	if len(event.ROI) == 4 {
+		eventROI = image.Rect(event.ROI[0], event.ROI[1], event.ROI[2], event.ROI[3])
+	}
+
+	for frameIdx := event.StartFrameIdx; frameIdx <= event.EndFrameIdx; frameIdx++ {
+		// Frames are written by Module 2 as `<videoID>__f%07d__t<ts>.jpg`.
+		// This previously looked for `frame_%05d.jpg`, which never matched,
+		// so every frame was skipped and prohibited-object detection
+		// silently produced nothing on every run.
+		pattern := filepath.Join(framesDir, fmt.Sprintf("%s__f%07d__t*.jpg", videoID, frameIdx))
+		matches, err := filepath.Glob(pattern)
+		if err != nil || len(matches) == 0 {
 			continue
 		}
+		framePath := matches[0]
 
-		// Run detection on each ROI
+		timestampSec := float64(frameIdx) / header.FPS
+
+		// Prefer per-frame ROIs from Module 5; fall back to the event ROI,
+		// then the whole frame. Without a fallback, events lacking per-frame
+		// ROI data would scan nothing at all.
+		var roiRects []image.Rectangle
+		if frameData, ok := getFrameROIs(eventFrames, frameIdx); ok && len(frameData.ROIs) > 0 {
+			for _, roi := range frameData.ROIs {
+				roiRects = append(roiRects, image.Rect(roi.BBoxX1, roi.BBoxY1, roi.BBoxX2, roi.BBoxY2))
+			}
+		} else if !eventROI.Empty() {
+			roiRects = append(roiRects, eventROI)
+		} else {
+			roiRects = append(roiRects, image.Rect(0, 0, header.Width, header.Height))
+		}
+
 		var allDetections []Detection
-		for _, roi := range frame.ROIs {
-			roiRect := image.Rect(roi.BBoxX1, roi.BBoxY1, roi.BBoxX2, roi.BBoxY2)
+		for _, roiRect := range roiRects {
 			detections, err := detector.DetectFrame(framePath, roiRect)
 			if err != nil {
 				continue
@@ -263,19 +293,36 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 			allDetections = append(allDetections, detections...)
 		}
 
-		// Store bboxes per object type (filter out persons)
+		// Keep only prohibited items — a bare "not a person" filter would
+		// flood events with exam-hall furniture (chairs, tables, monitors).
+		var prohibited []Detection
 		for _, det := range allDetections {
-			if det.ClassName != "person" {
-				bbox := BBox{
-					FrameIdx:     frame.FrameIdx,
-					TimestampSec: frame.TimestampSec,
-					X1:           det.BBox.Min.X,
-					Y1:           det.BBox.Min.Y,
-					X2:           det.BBox.Max.X,
-					Y2:           det.BBox.Max.Y,
-					Confidence:   det.Confidence,
+			if !isProhibitedObject(det.ClassName) {
+				continue
+			}
+			prohibited = append(prohibited, det)
+			objectBBoxes[det.ClassName] = append(objectBBoxes[det.ClassName], BBox{
+				FrameIdx:     frameIdx,
+				TimestampSec: timestampSec,
+				X1:           det.BBox.Min.X,
+				Y1:           det.BBox.Min.Y,
+				X2:           det.BBox.Max.X,
+				Y2:           det.BBox.Max.Y,
+				Confidence:   det.Confidence,
+			})
+		}
+
+		// Automatic evidence capture: the moment a prohibited object is on
+		// screen, write an annotated still so an investigator has a dated
+		// snapshot without having to scrub the video and press a button.
+		if len(prohibited) > 0 && snapshotDir != "" {
+			os.MkdirAll(snapshotDir, 0755)
+			shot := filepath.Join(snapshotDir,
+				fmt.Sprintf("event%d_f%07d.jpg", event.EventID, frameIdx))
+			if _, err := os.Stat(shot); os.IsNotExist(err) {
+				if err := detector.AnnotateFrame(framePath, allDetections, shot); err != nil {
+					log.Printf("[WARN] snapshot failed for frame %d: %v", frameIdx, err)
 				}
-				objectBBoxes[det.ClassName] = append(objectBBoxes[det.ClassName], bbox)
 			}
 		}
 	}
@@ -328,6 +375,280 @@ func detectObjects(event Event, eventFrames []FrameROIs, framesDir string, video
 	}
 
 	return objectDetections
+}
+
+// Prohibited items, expressed as COCO classes YOLO can actually emit.
+// "book" is the practical stand-in for paper/chits — COCO has no chit class,
+// and a folded sheet on a desk reads as a book far more often than anything
+// else. Everything not listed here (chairs, monitors, bottles, furniture) is
+// normal exam-hall content and must not raise an offence.
+const (
+	// An invigilator pausing beside a desk is normal; standing there for the
+	// better part of a minute is the pattern worth flagging. Tunable.
+	loiteringMinSeconds = 45.0
+	// During an exam the baseline is near-static, so three people moving in
+	// the same frame is already anomalous.
+	crowdMinPersons = 3
+)
+
+var prohibitedObjects = map[string]string{
+	"cell phone": "mobile phone",
+	"book":       "paper/chit",
+	"laptop":     "laptop",
+	"remote":     "handheld device",
+}
+
+func isProhibitedObject(className string) bool {
+	_, ok := prohibitedObjects[className]
+	return ok
+}
+
+func prohibitedLabel(className string) string {
+	if label, ok := prohibitedObjects[className]; ok {
+		return label
+	}
+	return className
+}
+
+// detectLoitering flags a track that stays in essentially one spot for a long
+// stretch — the "invigilator parked next to a candidate" pattern. Movement is
+// measured as centroid drift relative to the person's own bounding-box size,
+// so it behaves the same for someone near the camera as far from it.
+func detectLoitering(tracks []PersonTrack, minSeconds float64) []Offence {
+	var offences []Offence
+
+	for _, track := range tracks {
+		if len(track.BBoxes) < 2 {
+			continue
+		}
+
+		windowStart := track.BBoxes[0]
+		for i := 1; i < len(track.BBoxes); i++ {
+			cur := track.BBoxes[i]
+			refW := float64(windowStart.X2-windowStart.X1) + 1
+			refH := float64(windowStart.Y2-windowStart.Y1) + 1
+
+			dx := float64((cur.X1+cur.X2)/2 - (windowStart.X1+windowStart.X2)/2)
+			dy := float64((cur.Y1+cur.Y2)/2 - (windowStart.Y1+windowStart.Y2)/2)
+			drift := math.Sqrt(dx*dx+dy*dy) / math.Max(refW, refH)
+
+			// Drifted far enough to count as "moved on" — restart the window.
+			if drift > 0.75 {
+				windowStart = cur
+				continue
+			}
+
+			stationaryFor := cur.TimestampSec - windowStart.TimestampSec
+			if stationaryFor >= minSeconds {
+				offences = append(offences, Offence{
+					Type:        "loitering",
+					Label:       fmt.Sprintf("Person stationary for %.0fs", stationaryFor),
+					TrackID:     track.TrackID,
+					StartSec:    windowStart.TimestampSec,
+					EndSec:      cur.TimestampSec,
+					FrameIdx:    cur.FrameIdx,
+					Confidence:  track.Confidence,
+					BBox:        []int{cur.X1, cur.Y1, cur.X2, cur.Y2},
+					DurationSec: stationaryFor,
+				})
+				// One report per stationary stretch, then look for the next.
+				windowStart = cur
+			}
+		}
+	}
+
+	return offences
+}
+
+// detectCrowdDisturbance flags moments where several people move at once —
+// during an exam the baseline is near-static, so simultaneous activity across
+// multiple tracks is itself the anomaly.
+func detectCrowdDisturbance(tracks []PersonTrack, minPersons int) []Offence {
+	if len(tracks) < minPersons {
+		return nil
+	}
+
+	// Bucket per-frame activity by frame index across all tracks.
+	movingPerFrame := make(map[int]map[string]bool)
+	frameTime := make(map[int]float64)
+
+	for _, track := range tracks {
+		for i := 1; i < len(track.BBoxes); i++ {
+			prev, cur := track.BBoxes[i-1], track.BBoxes[i]
+			refW := float64(cur.X2-cur.X1) + 1
+			dx := float64((cur.X1+cur.X2)/2 - (prev.X1+prev.X2)/2)
+			dy := float64((cur.Y1+cur.Y2)/2 - (prev.Y1+prev.Y2)/2)
+			if math.Sqrt(dx*dx+dy*dy)/refW < 0.10 {
+				continue // below this, it's detector jitter rather than motion
+			}
+			if movingPerFrame[cur.FrameIdx] == nil {
+				movingPerFrame[cur.FrameIdx] = make(map[string]bool)
+			}
+			movingPerFrame[cur.FrameIdx][track.TrackID] = true
+			frameTime[cur.FrameIdx] = cur.TimestampSec
+		}
+	}
+
+	var frames []int
+	for f, movers := range movingPerFrame {
+		if len(movers) >= minPersons {
+			frames = append(frames, f)
+		}
+	}
+	if len(frames) == 0 {
+		return nil
+	}
+	sort.Ints(frames)
+
+	peak, peakFrame := 0, frames[0]
+	for _, f := range frames {
+		if n := len(movingPerFrame[f]); n > peak {
+			peak, peakFrame = n, f
+		}
+	}
+
+	return []Offence{{
+		Type:       "crowd_disturbance",
+		Label:      fmt.Sprintf("%d people moving simultaneously", peak),
+		StartSec:   frameTime[frames[0]],
+		EndSec:     frameTime[frames[len(frames)-1]],
+		FrameIdx:   peakFrame,
+		Confidence: math.Min(1.0, float64(peak)/float64(minPersons+2)),
+		Count:      peak,
+	}}
+}
+
+// detectObjectExchange flags a prohibited object appearing while two or more
+// people are close together — the hand-off pattern (passing a chit or phone).
+// This is a proximity heuristic, not a verified hand-to-hand observation.
+func detectObjectExchange(tracks []PersonTrack, objects []ObjectDetection) []Offence {
+	var offences []Offence
+
+	for _, obj := range objects {
+		for _, ob := range obj.BBoxes {
+			var near []string
+			for _, track := range tracks {
+				for _, pb := range track.BBoxes {
+					if pb.FrameIdx != ob.FrameIdx {
+						continue
+					}
+					// Expand the person box slightly: a passed object sits
+					// between two people rather than inside either one.
+					pad := (pb.X2 - pb.X1) / 4
+					if ob.X2 >= pb.X1-pad && ob.X1 <= pb.X2+pad &&
+						ob.Y2 >= pb.Y1-pad && ob.Y1 <= pb.Y2+pad {
+						near = append(near, track.TrackID)
+					}
+					break
+				}
+			}
+			if len(near) >= 2 {
+				offences = append(offences, Offence{
+					Type:       "object_exchange",
+					Label:      fmt.Sprintf("Possible %s exchange between %d people", prohibitedLabel(obj.ObjectType), len(near)),
+					StartSec:   ob.TimestampSec,
+					EndSec:     ob.TimestampSec,
+					FrameIdx:   ob.FrameIdx,
+					Confidence: ob.Confidence,
+					BBox:       []int{ob.X1, ob.Y1, ob.X2, ob.Y2},
+					Count:      len(near),
+				})
+				break // one report per object type is enough
+			}
+		}
+	}
+
+	return offences
+}
+
+// classifyOffences turns raw detections into the reviewable offence list:
+// prohibited objects, loitering, crowd disturbance, object exchange, and
+// motion anomalies. Each offence carries the frame it happened on, and where
+// an auto-captured still exists for that frame it is attached as evidence.
+func classifyOffences(event Event, ev EnrichedEvent, outDir string) []Offence {
+	var offences []Offence
+
+	// ---- prohibited objects (phones, chits/paper, laptops) ----
+	for _, obj := range ev.ObjectDetections {
+		if len(obj.BBoxes) == 0 {
+			continue
+		}
+		// Report the most confident sighting — that is the frame worth
+		// showing an investigator.
+		best := obj.BBoxes[0]
+		for _, b := range obj.BBoxes {
+			if b.Confidence > best.Confidence {
+				best = b
+			}
+		}
+		offences = append(offences, Offence{
+			Type:       "prohibited_object",
+			Label:      fmt.Sprintf("%s detected", prohibitedLabel(obj.ObjectType)),
+			TrackID:    derefTrackID(obj.TrackID),
+			StartSec:   obj.FirstSeen,
+			EndSec:     obj.LastSeen,
+			FrameIdx:   best.FrameIdx,
+			Confidence: best.Confidence,
+			BBox:       []int{best.X1, best.Y1, best.X2, best.Y2},
+			Count:      obj.FrameCount,
+		})
+	}
+
+	// ---- object exchange (chit/phone passed between people) ----
+	offences = append(offences, detectObjectExchange(ev.PersonTracks, ev.ObjectDetections)...)
+
+	// ---- loitering (e.g. invigilator parked beside a candidate) ----
+	offences = append(offences, detectLoitering(ev.PersonTracks, loiteringMinSeconds)...)
+
+	// ---- crowd-level simultaneous movement ----
+	offences = append(offences, detectCrowdDisturbance(ev.PersonTracks, crowdMinPersons)...)
+
+	// ---- motion anomaly (abrupt, non-periodic activity spike) ----
+	// Module 3's spectral-residual jerk score already isolates sudden motion
+	// against the near-static baseline of an exam hall; surface it as an
+	// offence rather than leaving it as a bare metric.
+	if event.MotionCharacter == "sudden" && event.PeakJerkScore > 0 {
+		offences = append(offences, Offence{
+			Type:       "motion_anomaly",
+			Label:      fmt.Sprintf("Sudden activity spike (jerk %.2f)", event.PeakJerkScore),
+			StartSec:   event.Start,
+			EndSec:     event.End,
+			FrameIdx:   event.StartFrameIdx,
+			Confidence: event.PeakJerkScore,
+		})
+	}
+
+	// Attach any auto-captured still that matches the offence's frame.
+	snapshotDir := filepath.Join(outDir, "snapshots")
+	for i := range offences {
+		shot := filepath.Join(snapshotDir, fmt.Sprintf("event%d_f%07d.jpg", event.EventID, offences[i].FrameIdx))
+		if _, err := os.Stat(shot); err == nil {
+			offences[i].Snapshot = shot
+		}
+	}
+
+	return offences
+}
+
+// collectSnapshots returns the distinct evidence stills across an event's
+// offences, preserving order so the strongest finding's still comes first.
+func collectSnapshots(offences []Offence) []string {
+	seen := make(map[string]bool)
+	shots := []string{}
+	for _, o := range offences {
+		if o.Snapshot != "" && !seen[o.Snapshot] {
+			seen[o.Snapshot] = true
+			shots = append(shots, filepath.ToSlash(o.Snapshot))
+		}
+	}
+	return shots
+}
+
+func derefTrackID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
 }
 
 // bboxesOverlap checks if two bboxes overlap
@@ -563,6 +884,8 @@ func buildAPIResponse(header *Header, enrichedEvents []EnrichedEvent, eventsData
 			Status:          ev.Status,
 			MotionCharacter: ev.MotionCharacter,
 			PeakJerkScore:   ev.PeakJerkScore,
+			Offences:        ev.Offences,
+			Snapshots:       collectSnapshots(ev.Offences),
 		}
 		apiEvents = append(apiEvents, apiEvent)
 	}
