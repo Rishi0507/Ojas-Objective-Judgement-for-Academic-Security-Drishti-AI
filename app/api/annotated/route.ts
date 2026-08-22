@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getCurrentPipelineDir } from '@/lib/currentVideo';
+import { assetETag, isFresh } from '@/lib/assetCache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,13 +34,14 @@ export async function GET(request: NextRequest) {
         : undefined;
 
       if (match) {
-        const imageBuffer = fs.readFileSync(path.join(framesDir, match));
-        return new NextResponse(imageBuffer, {
+        const rawPath = path.join(framesDir, match);
+        const rawEtag = assetETag(rawPath);
+        if (isFresh(request, rawEtag)) {
+          return new NextResponse(null, { status: 304, headers: { ETag: rawEtag, 'Cache-Control': 'no-cache' } });
+        }
+        return new NextResponse(fs.readFileSync(rawPath), {
           status: 200,
-          headers: {
-            'Content-Type': 'image/jpeg',
-            'Cache-Control': 'public, max-age=3600',
-          },
+          headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache', ETag: rawEtag },
         });
       }
 
@@ -47,13 +49,18 @@ export async function GET(request: NextRequest) {
     }
     
     // Serve annotated frame
-    const imageBuffer = fs.readFileSync(framePath);
-    
-    return new NextResponse(imageBuffer, {
+    // Frame numbers repeat across videos, so this must revalidate too.
+    const etag = assetETag(framePath);
+    if (isFresh(request, etag)) {
+      return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'no-cache' } });
+    }
+
+    return new NextResponse(fs.readFileSync(framePath), {
       status: 200,
       headers: {
         'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-cache',
+        ETag: etag,
         'X-Annotated': 'true',
       },
     });

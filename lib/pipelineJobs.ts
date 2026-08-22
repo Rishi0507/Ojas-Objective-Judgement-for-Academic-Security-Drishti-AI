@@ -168,6 +168,9 @@ async function probeCodec(videoPath: string, streamSelector: 'v:0' | 'a:0'): Pro
   }
 }
 
+/** Literal newline, kept out of template strings so concat-list text stays readable. */
+const NEWLINE = String.fromCharCode(10)
+
 const BROWSER_SAFE_VIDEO_CODECS = new Set(['h264'])
 const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
 
@@ -329,13 +332,36 @@ async function generateEventClips(
       })
 
       if (inWindow.length >= 2) {
-        // Sampled frames are sparse and unevenly spaced, so drive ffmpeg
-        // with a concat list at a fixed display rate rather than pretending
-        // they're a contiguous numbered sequence.
+        // Sampled frames are sparse and unevenly spaced, so drive ffmpeg with a
+        // concat list rather than pretending they're a contiguous sequence.
+        //
+        // Each frame is held for the gap until the NEXT annotated frame, not a
+        // fixed 0.2s. Only frames that carried a detection exist on disk, so a
+        // fixed hold silently collapses every gap between them: an 83s event
+        // rendered as a 32s montage, a 54s event as 3.8s. That breaks more than
+        // length - EventDetail maps clip time to source time as
+        // `event.start + video.currentTime`, so a compressed annotated clip
+        // desynced the time readout, the frame lookup and the scrubber the
+        // moment the user toggled bounding boxes.
+        //
+        // Holding each frame for its real gap makes clip time map 1:1 onto
+        // source time, exactly like the plain clip, so the two are
+        // interchangeable to the player. The first frame stretches back to the
+        // event start and the last runs to the event end, so the total always
+        // equals the event duration.
         const listPath = path.join(clipsDir, `${safeId}_frames.txt`)
+        const eventEnd = start + duration
+        const frameTimes = inWindow.map((f) => f.idx / fps)
+        const MIN_HOLD = 0.04 // guard against zero/negative spans
         const listBody = inWindow
-          .map((f) => `file '${path.join(annotatedDir, f.file).replace(/\\/g, '/')}'\nduration 0.2`)
-          .join('\n')
+          .map((f, i) => {
+            const from = i === 0 ? start : frameTimes[i]
+            const to = i === inWindow.length - 1 ? eventEnd : frameTimes[i + 1]
+            const hold = Math.max(MIN_HOLD, to - from)
+            const framePath = path.join(annotatedDir, f.file).split(path.sep).join('/')
+            return `file '${framePath}'` + NEWLINE + `duration ${hold.toFixed(3)}`
+          })
+          .join(NEWLINE)
         // concat demuxer ignores the final entry's duration unless the last
         // file is repeated, otherwise the closing frame is dropped.
         const lastFile = path.join(annotatedDir, inWindow[inWindow.length - 1].file).replace(/\\/g, '/')
@@ -345,7 +371,21 @@ async function generateEventClips(
         try {
           await runCommand('ffmpeg', [
             '-y', '-f', 'concat', '-safe', '0', '-i', listPath,
-            '-vsync', 'vfr',
+            // -fps_mode, not the old -vsync: that alias was deprecated in
+            // ffmpeg 5 and REMOVED in ffmpeg 9, where it hard-fails the whole
+            // command with "Unrecognized option 'vsync'" — so every annotated
+            // clip silently failed to render on a current ffmpeg.
+            // CFR, not VFR. The concat demuxer expresses each frame's hold as a
+            // PTS gap, and a VFR encode drops most of the trailing hold on the
+            // floor - measured 7.2s out of an intended 8.33s. Resampling to a
+            // constant rate duplicates frames across the gaps instead, landing
+            // within one frame of the true event duration so clip time stays
+            // aligned with source time for the whole clip.
+            '-fps_mode', 'cfr', '-r', String(fps),
+            // Hard-cap at the event length. CFR fills the holds by duplicating
+            // frames and can overrun by a few seconds on sparse events; -t trims
+            // the tail so clip length always equals the window exactly.
+            '-t', duration.toFixed(3),
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             // yuv420p + even dimensions, or browsers refuse to decode it.
             '-pix_fmt', 'yuv420p',

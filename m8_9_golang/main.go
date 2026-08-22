@@ -67,9 +67,15 @@ func main() {
 	log.Println("[INFO] Initializing YOLO detector...")
 	detector, err := NewYOLODetector(*yoloModel, *confidenceThresh)
 	if err != nil {
-		log.Printf("[WARN] YOLO initialization failed: %v. Running in intelligent mock mode.", err)
-		detector = nil // Mock mode
+		// Fail loudly rather than silently degrading to the mock generators in
+		// processor.go. Mock output is shape-compatible with real detections,
+		// so a silent fallback ships fabricated person tracks and phone/paper
+		// hits to the frontend that are indistinguishable from real ones.
+		// A missing/broken YOLO setup is a setup error and must be fixed, not
+		// papered over: install `ultralytics` and ensure yolov8n.pt is present.
+		log.Fatalf("YOLO initialization failed: %v", err)
 	}
+	defer detector.Close()
 
 	// Process events with person detection and object detection
 	log.Println("[INFO] Processing events with person and object detection...")

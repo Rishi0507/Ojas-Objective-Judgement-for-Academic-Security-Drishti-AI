@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { assetETag, isFresh } from '@/lib/assetCache'
 
 /**
  * Serves an auto-captured offence snapshot. Paths are confined to
@@ -24,12 +25,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Snapshot not found' }, { status: 404 })
     }
 
+    const etag = assetETag(full)
+    if (isFresh(request, etag)) {
+      return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'no-cache' } })
+    }
+
     return new NextResponse(fs.readFileSync(full), {
       status: 200,
-      headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=3600',
-      },
+      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache', ETag: etag },
     })
   } catch (error) {
     console.error('Error serving snapshot:', error)
