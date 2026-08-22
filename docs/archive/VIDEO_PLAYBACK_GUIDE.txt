@@ -1,0 +1,272 @@
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   📹 VIDEO PLAYBACK GUIDE                                    ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+🎬 WHERE TO FIND VIDEO PLAYBACK IN THE UI
+
+═══════════════════════════════════════════════════════════════
+
+📍 LOCATION: Event Detail View
+
+The actual video clip is visible when you navigate to the
+Event Detail page for any specific event.
+
+═══════════════════════════════════════════════════════════════
+
+🗺️ STEP-BY-STEP NAVIGATION:
+
+STEP 1: Open Browser
+   → http://localhost:3000
+   → You'll land on the Dashboard
+
+STEP 2: Go to Video Analysis
+   → On Dashboard, find "Recent Videos" section
+   → Click on the video card: "04.CCTV Candidate Talking.mkv"
+   → This takes you to Video Analysis view
+
+STEP 3: Select an Event
+   → Scroll to "Detected Events" section (bottom of page)
+   → You'll see 4 events listed:
+      • Event 1: 00:00 - 00:54 (54.5s)
+      • Event 2: 00:54 - 00:55 (0.75s)
+      • Event 3: 00:58 - 00:59 (1.25s)
+      • Event 4: 01:00 - 02:23 (83.0s)
+   → Click on ANY event card
+
+STEP 4: Watch the Video
+   → You're now in Event Detail view
+   → VIDEO PLAYER is at the TOP of the page
+   → Shows the full CCTV video with time range markers
+
+═══════════════════════════════════════════════════════════════
+
+🎥 VIDEO PLAYER FEATURES:
+
+Location: Top of Event Detail page (large video container)
+
+┌────────────────────────────────────────────────────────────┐
+│                                                            │
+│         📹 VIDEO PLAYS HERE                                │
+│         (16:9 aspect ratio, contained)                     │
+│                                                            │
+│  Top right corner: 00:00 - 00:54 (event time range)       │
+│  Bottom left: Current: 00:15.3 (current position)         │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+
+Controls Below Video:
+┌────────────────────────────────────────────────────────────┐
+│  [▶ Play Event]  or  [⏸ Pause]                  54.5s     │
+│                                                            │
+│  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━○               │
+│  Seek bar (drag to jump to any point in event)            │
+│                                                            │
+│  00:00                                            00:54    │
+│  (event start)                              (event end)   │
+└────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+
+✨ HOW VIDEO PLAYBACK WORKS:
+
+1. FULL VIDEO STREAMING
+   • Plays the entire CCTV video file
+   • Source: clips/04.CCTV Candidate Talking.mkv
+   • Streams via /api/stream endpoint
+   • Supports range requests for seeking
+
+2. EVENT TIME RANGE
+   • Video starts at event start time
+   • Example: Event 1 starts at 0:00, Event 4 starts at 1:00
+   • Auto-pauses when reaching event end time
+   • Time range shown in top-right corner
+
+3. CONTROLS
+   • Play/Pause: Click button below video
+   • Seek: Drag the seek bar
+   • Time display: Shows current position
+   • Auto-restart: If at end, clicking Play restarts from event start
+
+4. SMART FEATURES
+   • Event-scoped: Only shows the relevant time segment
+   • Auto-pause: Stops at event end boundary
+   • Smooth seeking: Jump to any point in the event
+   • Real-time display: Current time updates as video plays
+
+═══════════════════════════════════════════════════════════════
+
+🎯 WHAT YOU'LL SEE FOR EACH EVENT:
+
+Event 1 (00:00 - 00:54):
+  • Duration: 54.5 seconds
+  • Shows: First ~54 seconds of CCTV footage
+  • Longest continuous motion segment
+
+Event 2 (00:54 - 00:55):
+  • Duration: 0.75 seconds
+  • Shows: Brief motion at ~54 second mark
+  • Short motion burst
+
+Event 3 (00:58 - 00:59):
+  • Duration: 1.25 seconds
+  • Shows: Another brief motion at ~58 seconds
+  • Quick movement detected
+
+Event 4 (01:00 - 02:23):
+  • Duration: 83 seconds
+  • Shows: Final 83 seconds of video
+  • Extended activity period
+
+═══════════════════════════════════════════════════════════════
+
+📊 ADDITIONAL DATA VISIBLE:
+
+Below the video player, you'll also see:
+
+Evidence & Analysis:
+  • Detection type and description
+  • Confidence scores
+  • Motion intensity
+  • Supporting evidence list
+
+Metadata (Right sidebar):
+  • Video ID
+  • Event ID
+  • Start/End timestamps
+  • Duration
+  • Track ID
+
+Quality Factors:
+  • Camera Shake: Real analysis
+  • Blur Score: Real measurement
+  • Occlusion: Real calculation
+  • Lighting: Real assessment
+
+Investigator Feedback:
+  • 5 feedback options
+  • Submit button
+  • Review tracking
+
+═══════════════════════════════════════════════════════════════
+
+🔧 TECHNICAL DETAILS:
+
+Video File:
+  • Location: clips/04.CCTV Candidate Talking.mkv
+  • Format: MKV (Matroska)
+  • Resolution: 640x480
+  • Duration: 143 seconds (2:23)
+
+Streaming:
+  • API: /api/stream?path=clips/04.CCTV Candidate Talking.mkv
+  • Method: HTTP range requests
+  • Buffering: Progressive (streams as needed)
+  • Browser: HTML5 video element
+
+Event Detection:
+  • Source: Python Module 7 output
+  • Data: events.json (from pipeline)
+  • Enrichment: Golang Modules 8-9
+  • Integration: Via public/api/events.json
+
+═══════════════════════════════════════════════════════════════
+
+✅ TESTING VIDEO PLAYBACK:
+
+1. Navigate to Event Detail
+   Dashboard → Video Card → Event → Event Detail
+
+2. Check Video Loads
+   • Should see video frame (not black screen)
+   • Time range displayed in corner
+   • Controls visible below
+
+3. Test Play Button
+   • Click "Play Event" button
+   • Video should start playing
+   • Button changes to "Pause"
+
+4. Test Seek Bar
+   • Drag the slider left/right
+   • Video should jump to new position
+   • Time updates accordingly
+
+5. Test Auto-Pause
+   • Let video play to event end
+   • Should auto-pause at end time
+   • Clicking Play restarts from beginning
+
+6. Test All Events
+   • Navigate back to Video Analysis
+   • Click different events
+   • Each should show corresponding time segment
+
+═══════════════════════════════════════════════════════════════
+
+🐛 TROUBLESHOOTING:
+
+Issue: Video not loading (black screen)
+Fix:
+  • Check video file exists: clips/04.CCTV Candidate Talking.mkv
+  • Check browser console (F12) for errors
+  • Verify /api/stream endpoint is working
+  • Try different browser (Chrome/Firefox/Edge)
+
+Issue: Video loads but won't play
+Fix:
+  • Check browser codec support (MKV may need conversion)
+  • Convert to MP4 if needed: ffmpeg -i input.mkv output.mp4
+  • Check browser allows video autoplay
+
+Issue: Controls not working
+Fix:
+  • Hard refresh browser (Ctrl+Shift+R)
+  • Clear browser cache
+  • Check JavaScript console for errors
+
+Issue: Wrong time range displayed
+Fix:
+  • Verify event data in public/api/events.json
+  • Check event start/end times match expectations
+  • Re-run integration: .\run_integration.bat
+
+═══════════════════════════════════════════════════════════════
+
+📝 QUICK REFERENCE:
+
+Navigation Path:
+  Dashboard → Video Card → Event List → Event Detail → VIDEO HERE
+
+Video Location:
+  • Page: Event Detail
+  • Position: Top of page (full width, 2/3 of layout)
+  • Size: Large video player (~16:9 aspect)
+
+Direct Test:
+  1. http://localhost:3000
+  2. Click "04.CCTV Candidate Talking.mkv" card
+  3. Scroll down to events list
+  4. Click "Event 1" (or any event)
+  5. See video player at top
+  6. Click "Play Event"
+  7. Watch your CCTV footage!
+
+═══════════════════════════════════════════════════════════════
+
+🎉 SUMMARY:
+
+✓ Video playback is in Event Detail view
+✓ Access by clicking any event from the event list
+✓ Shows full CCTV video with event time boundaries
+✓ Includes play/pause, seek, and time display
+✓ Auto-pauses at event end
+✓ Works for all 4 events with different time ranges
+✓ Displays real metadata and analysis alongside video
+
+═══════════════════════════════════════════════════════════════
+
+Ready to watch your CCTV footage with AI analysis! 🚀
+
+═══════════════════════════════════════════════════════════════

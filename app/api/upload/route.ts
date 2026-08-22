@@ -1,0 +1,56 @@
+import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
+import path from 'path'
+import { ensureDirs, slugify, writeStatus, processUploadedVideo } from '@/lib/pipelineJobs'
+
+const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.mov', '.avi', '.webm']
+const MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024 // 2GB
+
+export async function POST(req: NextRequest) {
+  try {
+    const formData = await req.formData()
+    const file = formData.get('video') as File | null
+
+    if (!file) {
+      return NextResponse.json({ error: 'No video file provided' }, { status: 400 })
+    }
+
+    const ext = path.extname(file.name).toLowerCase()
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return NextResponse.json(
+        { error: `Unsupported file type "${ext}". Allowed: ${ALLOWED_EXTENSIONS.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    if (file.size > MAX_SIZE_BYTES) {
+      return NextResponse.json({ error: 'File exceeds 2GB limit' }, { status: 400 })
+    }
+
+    ensureDirs()
+
+    const jobId = slugify(file.name)
+    const savedName = `${jobId}${ext}`
+    const savedPath = path.join(process.cwd(), 'uploads', savedName)
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    fs.writeFileSync(savedPath, buffer)
+
+    writeStatus(jobId, {
+      state: 'queued',
+      message: 'Upload received, queued for processing',
+      filename: file.name,
+      startedAt: new Date().toISOString(),
+    })
+
+    // Fire-and-forget: the dev/production server process stays alive for the
+    // duration of the multi-minute pipeline, so this continues after the
+    // response below is sent.
+    processUploadedVideo(jobId, savedPath, file.name)
+
+    return NextResponse.json({ jobId, filename: file.name }, { status: 202 })
+  } catch (error: any) {
+    console.error('Upload failed:', error)
+    return NextResponse.json({ error: error?.message ?? 'Upload failed' }, { status: 500 })
+  }
+}

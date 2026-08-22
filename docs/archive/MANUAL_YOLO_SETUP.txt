@@ -1,0 +1,75 @@
+==========================================
+MANUAL YOLO SETUP - NETWORK ISSUE WORKAROUND
+==========================================
+
+The automated download failed due to network connectivity issues.
+Please follow these manual steps:
+
+STEP 1: Download YOLOv8n Model Manually
+========================================
+
+Option A - Direct Download:
+1. Open your web browser
+2. Go to: https://github.com/ultralytics/assets/releases
+3. Find "v8.0.0" or latest release
+4. Click on "yolov8n.onnx" to download (~6 MB)
+5. Save to: D:\1_hackathons\drishti ai\m8_9_golang\models\yolov8n.onnx
+
+Option B - Alternative URL:
+1. Try this direct link in browser:
+   https://github.com/ultralytics/assets/releases/download/v8.0.0/yolov8n.onnx
+2. Save to: D:\1_hackathons\drishti ai\m8_9_golang\models\yolov8n.onnx
+
+Option C - Use Python (if available):
+python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/ultralytics/assets/releases/download/v8.0.0/yolov8n.onnx', 'm8_9_golang/models/yolov8n.onnx')"
+
+STEP 2: Download ONNX Runtime DLL
+==================================
+
+1. Go to: https://github.com/microsoft/onnxruntime/releases
+2. Find latest version (e.g., v1.16.3)
+3. Download: onnxruntime-win-x64-1.16.3.zip (~30 MB)
+4. Extract the ZIP file
+5. Navigate to: lib\onnxruntime.dll
+6. Copy onnxruntime.dll to: D:\1_hackathons\drishti ai\m8_9_golang\
+
+STEP 3: Install Go Dependencies
+================================
+
+Open PowerShell in project directory and run:
+
+cd m8_9_golang
+go get github.com/yalue/onnxruntime_go@v1.9.0
+go get github.com/nfnt/resize
+go mod tidy
+cd ..
+
+STEP 4: Build Backend
+======================
+
+.\build_backend.ps1
+
+STEP 5: Verify Setup
+====================
+
+Check these files exist:
+- m8_9_golang\models\yolov8n.onnx (~6 MB)
+- m8_9_golang\onnxruntime.dll (~20-30 MB)
+- m8_9_golang\drishti-backend.exe
+
+STEP 6: Run Integration
+========================
+
+.\run_integration.bat
+
+Expected output should show:
+[INFO] YOLO model loaded: models/yolov8n.onnx
+[INFO] Running in REAL YOLO inference mode
+
+==========================================
+ALTERNATIVE: Use curl (if installed)
+==========================================
+
+curl -L https://github.com/ultralytics/assets/releases/download/v8.0.0/yolov8n.onnx -o m8_9_golang\models\yolov8n.onnx
+
+==========================================
