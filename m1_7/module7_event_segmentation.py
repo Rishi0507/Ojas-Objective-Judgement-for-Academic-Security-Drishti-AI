@@ -83,6 +83,7 @@ def segment_events(
     min_duration: float = 1.5,
     merge_gap: float = 2.0,
     padding: float = 3.0,
+    frame_indices: Optional[list[int]] = None,
 ) -> list[dict]:
     """
     Hysteresis-based event segmentation.
@@ -122,6 +123,19 @@ def segment_events(
 
     video_end = timestamps[-1]
 
+    # start_frame_idx / end_frame_idx must be SOURCE frame numbers, because
+    # that is how consumers address frames on disk: Module 2 names sampled
+    # JPGs by source index (`..__f0001335__t..jpg`) and Module 8/9 globs for
+    # them by that number. Positions in these arrays are sampling-row
+    # indices, which differ by the sampling stride (e.g. a 25fps video
+    # sampled at 5fps makes row 267 the source frame 1335). Emitting the row
+    # index made the Go backend run detection ~40s away from the actual
+    # event, producing bounding boxes on unrelated footage.
+    def src_idx(i: int) -> int:
+        if frame_indices is not None and 0 <= i < len(frame_indices):
+            return int(frame_indices[i])
+        return i
+
     # ---- Pass 1: hysteresis thresholding (no duration filter yet) ----
     # Use >= and <= (not > and <) to avoid flicker at exactly threshold values.
     raw_events: list[dict] = []
@@ -141,8 +155,8 @@ def segment_events(
                 raw_events.append({
                     "start": event_start_ts,
                     "end": t,
-                    "start_frame_idx": event_start_idx,
-                    "end_frame_idx": i,
+                    "start_frame_idx": src_idx(event_start_idx),
+                    "end_frame_idx": src_idx(i),
                     "duration": t - event_start_ts,
                 })
 
@@ -151,8 +165,8 @@ def segment_events(
         raw_events.append({
             "start": event_start_ts,
             "end": video_end,
-            "start_frame_idx": event_start_idx,
-            "end_frame_idx": len(timestamps) - 1,
+            "start_frame_idx": src_idx(event_start_idx),
+            "end_frame_idx": src_idx(len(timestamps) - 1),
             "duration": video_end - event_start_ts,
         })
 
@@ -549,6 +563,7 @@ def run(
         min_duration=min_duration,
         merge_gap=merge_gap,
         padding=padding,
+        frame_indices=frame_indices,
     )
 
     # ---- Enrich with metadata ----

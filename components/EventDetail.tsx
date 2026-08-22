@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap } from 'lucide-react'
+import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface EventDetailProps {
@@ -23,6 +23,7 @@ interface EventData {
   trackId: string
   roi: number[]
   clipUrl: string
+  annotatedClipUrl?: string
   detection: {
     confidence: number
     object: string
@@ -62,9 +63,11 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(false)
   const [eventData, setEventData] = useState<EventData | null>(null)
   const [sourceVideoPath, setSourceVideoPath] = useState<string | null>(null)
+  const [videoFps, setVideoFps] = useState<number>(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0)
+  const [snapshotNote, setSnapshotNote] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -72,33 +75,47 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     fetch('/api/video')
       .then(res => res.json())
       .then(data => {
-        setSourceVideoPath(data.source_video_path ?? 'clips/04.CCTV Candidate Talking.mkv')
+        setSourceVideoPath(data.source_video_path ?? null)
+        setVideoFps(Number(data?.metadata?.fps) || 0)
         const event = data.events.find((e: EventData) => e.id === eventId)
-        if (event) {
-          setEventData(event)
-          // Set video to event start time
-          if (videoRef.current) {
-            videoRef.current.currentTime = event.start
-          }
-        }
+        if (event) setEventData(event)
       })
       .catch(err => console.error('Failed to load event:', err))
   }, [eventId])
+
+  // When a per-event clip exists we play that directly, so its timeline
+  // starts at 0 rather than at the event's offset within the full video.
+  const usingEventClip = !!eventData?.clipUrl
+  const clipOffset = usingEventClip ? (eventData?.start ?? 0) : 0
+
+  // Prefer the burned-in annotated clip when the user wants boxes, then the
+  // plain event clip, and only fall back to the full recording if neither
+  // was generated (e.g. ffmpeg unavailable during processing).
+  const activeSrc = (showBoundingBoxes && eventData?.annotatedClipUrl)
+    || eventData?.clipUrl
+    || sourceVideoPath
 
   useEffect(() => {
     const video = videoRef.current
     if (!video || !eventData) return
 
     const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime)
-      
-      // Calculate current frame index (assuming 8 fps from header.json)
-      const fps = 8.0
-      const frameIdx = Math.floor(video.currentTime * fps)
-      setCurrentFrameIdx(frameIdx)
-      
-      // Auto-pause at event end
-      if (video.currentTime >= eventData.end) {
+      // Absolute position in the source recording, so timestamps and frame
+      // lookups stay correct whether we're playing a cut clip or the full video.
+      const absoluteTime = clipOffset + video.currentTime
+      setCurrentTime(absoluteTime)
+
+      // Annotated frames are keyed by SOURCE frame index, so this must use
+      // the video's real frame rate. It was previously hardcoded to 8fps,
+      // which on a 25fps recording pulled frames from a completely different
+      // part of the video (at 240s it showed the frame from 77s).
+      if (videoFps > 0) {
+        setCurrentFrameIdx(Math.floor(absoluteTime * videoFps))
+      }
+
+      // Auto-pause at event end (only meaningful when playing the full video;
+      // a cut clip simply ends).
+      if (!usingEventClip && absoluteTime >= eventData.end) {
         video.pause()
         setIsPlaying(false)
       }
@@ -116,7 +133,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
       video.removeEventListener('play', handlePlay)
       video.removeEventListener('pause', handlePause)
     }
-  }, [eventData])
+  }, [eventData, videoFps, usingEventClip, clipOffset])
 
   const handlePlayPause = () => {
     if (!videoRef.current || !eventData) return
@@ -124,9 +141,12 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     if (isPlaying) {
       videoRef.current.pause()
     } else {
-      // If at or past event end, restart from beginning
-      if (videoRef.current.currentTime >= eventData.end) {
-        videoRef.current.currentTime = eventData.start
+      // Restart from the beginning of the event once it has run to the end.
+      const atEnd = usingEventClip
+        ? videoRef.current.ended || videoRef.current.currentTime >= eventData.duration - 0.05
+        : videoRef.current.currentTime >= eventData.end
+      if (atEnd) {
+        videoRef.current.currentTime = usingEventClip ? 0 : eventData.start
       }
       videoRef.current.play()
     }
@@ -134,13 +154,52 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!videoRef.current || !eventData) return
-    const newTime = eventData.start + (parseFloat(e.target.value) / 100) * eventData.duration
-    videoRef.current.currentTime = newTime
+    const fraction = parseFloat(e.target.value) / 100
+    videoRef.current.currentTime = usingEventClip
+      ? fraction * eventData.duration
+      : eventData.start + fraction * eventData.duration
   }
 
   const getSeekPosition = () => {
-    if (!eventData) return 0
+    if (!eventData || !eventData.duration) return 0
     return ((currentTime - eventData.start) / eventData.duration) * 100
+  }
+
+  /**
+   * Grabs the current frame as a PNG the investigator can attach to a report.
+   * Drawing the <video> straight onto a canvas keeps whatever is on screen,
+   * and when the annotated clip is selected that includes the detection boxes.
+   */
+  const handleSnapshot = () => {
+    const video = videoRef.current
+    if (!video || !eventData) return
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx || !canvas.width || !canvas.height) {
+      setSnapshotNote('Snapshot failed — video not ready yet')
+      return
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setSnapshotNote('Snapshot failed')
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${eventData.id}_${formatTime(currentTime).replace(':', 'm')}s.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setSnapshotNote(`Saved snapshot at ${formatTime(currentTime)}`)
+      setTimeout(() => setSnapshotNote(null), 4000)
+    }, 'image/png')
   }
 
   const handleSubmitFeedback = () => {
@@ -209,12 +268,16 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
             <div className="relative aspect-video bg-muted">
               <video
                 ref={videoRef}
+                key={activeSrc ?? 'none'}
                 className="w-full h-full object-contain"
-                src={sourceVideoPath ? `/api/stream?path=${encodeURIComponent(sourceVideoPath)}` : undefined}
+                crossOrigin="anonymous"
+                src={activeSrc ? `/api/stream?path=${encodeURIComponent(activeSrc)}` : undefined}
               >
                 Your browser does not support video playback.
               </video>
-              {showBoundingBoxes && currentFrameIdx > 0 && (
+              {/* Frame overlay is only needed as a fallback: when a burned-in
+                  annotated clip exists, the boxes are already in the video. */}
+              {showBoundingBoxes && !eventData.annotatedClipUrl && currentFrameIdx > 0 && (
                 <div className="absolute inset-0 pointer-events-none">
                   <img
                     src={`/api/annotated?frame=${currentFrameIdx}`}
@@ -270,9 +333,28 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                     </>
                   )}
                 </button>
+                <button
+                  onClick={handleSnapshot}
+                  className="px-4 py-2 rounded-lg transition-colors flex items-center gap-2 border bg-background border-border hover:bg-accent"
+                  title="Save the current frame as a PNG"
+                >
+                  <Camera className="w-4 h-4" strokeWidth={2} />
+                  Snapshot
+                </button>
                 <div className="flex-1" />
                 <span className="font-mono text-sm text-muted-foreground">{eventData.duration.toFixed(1)}s</span>
               </div>
+              {snapshotNote && (
+                <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded p-2">
+                  {snapshotNote}
+                </div>
+              )}
+              {!usingEventClip && (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  No extracted clip for this event — playing the full recording. Re-process the
+                  video to generate per-event clips.
+                </div>
+              )}
               {showBoundingBoxes && (
                 <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded border border-border">
                   <div className="flex items-center gap-4">
