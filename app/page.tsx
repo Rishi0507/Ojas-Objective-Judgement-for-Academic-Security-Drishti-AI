@@ -9,12 +9,15 @@ import VideoAnalysis from '@/components/VideoAnalysis'
 import EventsList from '@/components/EventsList'
 import EventDetail from '@/components/EventDetail'
 import LedgerView from '@/components/LedgerView'
+import FleetCalibration from '@/components/FleetCalibration'
 import { X, Loader2, XCircle } from 'lucide-react'
 import { useUploadJob } from '@/lib/useUploadJob'
 
 export default function Home() {
   const [showHero, setShowHero] = useState(true)
-  const [activeView, setActiveView] = useState<'dashboard' | 'analysis' | 'events' | 'event' | 'ledger'>('dashboard')
+  const [activeView, setActiveView] = useState<
+    'dashboard' | 'analysis' | 'events' | 'event' | 'ledger' | 'fleet'
+  >('dashboard')
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [eventOrigin, setEventOrigin] = useState<'analysis' | 'events'>('events')
@@ -139,6 +142,8 @@ export default function Home() {
           )}
 
           {activeView === 'ledger' && <LedgerView />}
+
+          {activeView === 'fleet' && <FleetCalibration />}
 
           {activeView === 'event' && selectedEvent && (
             <EventDetail
