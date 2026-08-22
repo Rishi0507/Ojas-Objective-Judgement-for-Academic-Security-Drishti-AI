@@ -8,11 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // processEvents enriches events with person detection and object detection
 func processEvents(events []Event, roisData *ROIsData, framesDir string, detector *YOLODetector, header *Header, outDir string) []EnrichedEvent {
 	enriched := make([]EnrichedEvent, 0, len(events))
+
+	// Feature 10.4. Loaded once for the video, not per event: the baselines
+	// describe the whole recording. Nil when the stage did not run, and every
+	// use below tolerates that.
+	baselines := loadRegionBaselines(filepath.Join(outDir, "baselines", "region_baselines.json"))
 
 	// One tracker for the whole video, so identities carry across events:
 	// a person seen in two events keeps one ID instead of being renumbered
@@ -111,6 +117,17 @@ func processEvents(events []Event, roisData *ROIsData, framesDir string, detecto
 			if shot := findEvidenceFrame(outDir, framesDir, header.VideoID, fIdx); shot != "" {
 				enrichedEvent.Offences[i].Snapshot = shot
 			}
+		}
+
+		// Feature 10.4 — annotate each offence with how abnormal its own part
+		// of the frame was, by that region's own standard for this video.
+		for i := range enrichedEvent.Offences {
+			off := &enrichedEvent.Offences[i]
+			fIdx := off.FrameIdx
+			if fIdx == 0 {
+				fIdx = event.StartFrameIdx
+			}
+			off.Region, off.RegionZ = baselines.annotate(off.BBox, event.ROI, fIdx)
 		}
 
 		enriched = append(enriched, enrichedEvent)
@@ -1514,6 +1531,43 @@ func frameURL(frameIdx int) string {
 	return fmt.Sprintf("/api/annotated?frame=%d", frameIdx)
 }
 
+// validateGrounding enforces the promise 10.6 makes: an explanation shown to an
+// investigator must be traceable back to the pixels it came from.
+//
+// Until now that was only a doc comment, and comments do not hold. Offences
+// legitimately reach here with an empty BBox (crowd_disturbance is a
+// property of a group, not a box) and an event whose ROI never resolved
+// carries an empty one too — so a claim could be emitted labelled "grounded"
+// while pointing at nothing checkable.
+//
+// The rule is deliberately asymmetric. A claim missing *some* grounding is
+// labelled with what it does have, so a reviewer can see the difference
+// between "here is the box" and "here is only the frame". A claim missing
+// *all* of it is dropped: an unfalsifiable assertion in a surveillance
+// report is worse than a gap, because it still accuses someone.
+func validateGrounding(ex Explanation) (Explanation, bool) {
+	if strings.TrimSpace(ex.Claim) == "" {
+		return ex, false
+	}
+	hasSpatial := len(ex.ObjectBBox) == 4 || len(ex.ROI) == 4
+	hasTemporal := len(ex.SupportingFrameURLs) > 0
+
+	switch {
+	case hasSpatial && hasTemporal:
+		ex.Grounding = "full"
+	case hasSpatial:
+		ex.Grounding = "spatial"
+	case hasTemporal:
+		ex.Grounding = "temporal"
+	default:
+		return ex, false // nothing to point at — do not make the claim
+	}
+	if ex.UncertaintyReason == "" {
+		ex.UncertaintyReason = "unavailable"
+	}
+	return ex, true
+}
+
 // buildExplanations emits one grounded explanation per claim the API makes
 // about an event (feature 10.6).
 //
@@ -1530,9 +1584,23 @@ func buildExplanations(api APIEvent, ev EnrichedEvent) []Explanation {
 		if off.Snapshot != "" {
 			urls = append(urls, "/api/snapshot?path="+filepath.ToSlash(off.Snapshot))
 		}
-		explanations = append(explanations, Explanation{
+
+		// Feature 10.4 feeding 10.6: state the claim together with how that
+		// part of the room was behaving, so a reviewer sees the corroboration
+		// or the lack of it instead of having to assume it.
+		claim := off.Label
+		if off.Region != "" {
+			if off.RegionZ != 0 {
+				claim = fmt.Sprintf("%s (region %s was %.1f sigma above its own baseline)",
+					claim, off.Region, off.RegionZ)
+			} else {
+				claim = fmt.Sprintf("%s (region %s was within its normal range)",
+					claim, off.Region)
+			}
+		}
+		ex, ok := validateGrounding(Explanation{
 			EventID:             api.ID,
-			Claim:               off.Label,
+			Claim:               claim,
 			Timestamp:           off.StartSec,
 			TrackID:             off.TrackID,
 			ROI:                 ev.ROI,
@@ -1540,10 +1608,15 @@ func buildExplanations(api APIEvent, ev EnrichedEvent) []Explanation {
 			SupportingFrameURLs: urls,
 			UncertaintyReason:   caveat,
 		})
+		if ok {
+			explanations = append(explanations, ex)
+		} else {
+			log.Printf("[10.6] dropped ungrounded claim on event %s: %q", api.ID, off.Label)
+		}
 	}
 
 	// Event-level motion claim, grounded on the frame where the event starts.
-	explanations = append(explanations, Explanation{
+	motionEx, ok := validateGrounding(Explanation{
 		EventID: api.ID,
 		Claim: fmt.Sprintf("Motion peaked at %.2f over %d analysed frames (%s onset)",
 			ev.PeakSFinal, ev.FrameCount, motionCharacterOrUnknown(ev.MotionCharacter)),
@@ -1553,6 +1626,9 @@ func buildExplanations(api APIEvent, ev EnrichedEvent) []Explanation {
 		SupportingFrameURLs: []string{frameURL(ev.StartFrameIdx)},
 		UncertaintyReason:   caveat,
 	})
+	if ok {
+		explanations = append(explanations, motionEx)
+	}
 
 	return explanations
 }
