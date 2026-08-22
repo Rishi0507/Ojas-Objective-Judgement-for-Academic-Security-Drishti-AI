@@ -19,9 +19,13 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
     <aside className="w-20 bg-card border-r border-border flex flex-col items-center py-6 gap-6">
       <div className="mb-4">
-        <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+        <button 
+          onClick={() => onViewChange('dashboard')}
+          className="w-12 h-12 bg-primary hover:bg-primary/90 transition-colors rounded-xl flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          title="Go to Dashboard"
+        >
           <Eye className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-        </div>
+        </button>
       </div>
 
       <nav className="flex-1 flex flex-col gap-2">
