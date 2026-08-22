@@ -308,9 +308,10 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               <video
                 ref={videoRef}
                 key={activeSrc ?? 'none'}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain cursor-pointer"
                 crossOrigin="anonymous"
                 src={activeSrc ? `/api/stream?path=${encodeURIComponent(activeSrc)}` : undefined}
+                onClick={handlePlayPause}
               >
                 Your browser does not support video playback.
               </video>
