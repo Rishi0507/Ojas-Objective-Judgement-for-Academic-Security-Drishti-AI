@@ -54,11 +54,14 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     fetch('/api/video')
       .then((res) => res.json())
       .then((data) => {
-        setVideoData(data)
+        // 404 ("No data available") comes back as { error: '...' } —
+        // treat it as "no video yet", not a crash.
+        setVideoData(data && !data.error ? data : null)
         setLoading(false)
       })
       .catch((err) => {
         console.error('Failed to load events:', err)
+        setVideoData(null)
         setLoading(false)
       })
   }, [])
@@ -107,8 +110,9 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
 
   if (!videoData) {
     return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Failed to load events</div>
+      <div className="p-8 flex flex-col items-center justify-center text-center">
+        <div className="font-medium mb-1">No events yet</div>
+        <p className="text-sm text-muted-foreground">Upload a video from the Dashboard to detect events.</p>
       </div>
     )
   }

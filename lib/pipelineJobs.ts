@@ -14,6 +14,10 @@ export interface JobStatus {
   startedAt: string
   updatedAt: string
   error?: string
+  /** 0-100. Modules 1-7 (Python) map to 0-90, Modules 8-9 (Go) to 90-100. */
+  percent?: number
+  /** Current pipeline stage id, e.g. "module3_motion_detection". */
+  stage?: string
 }
 
 const ROOT = process.cwd()
@@ -76,22 +80,58 @@ function runCommand(cmd: string, args: string[], cwd: string): Promise<string> {
   })
 }
 
+/**
+ * Polls a progress.json file (written by run_pipeline.py after each stage —
+ * see STAGE_WEIGHTS there) while a long-running command executes, and maps
+ * its 0-100 into [scaleMin, scaleMax] of the overall job's percent so the
+ * UI shows real incremental progress instead of a static message for
+ * minutes at a time.
+ */
+function watchProgressFile(
+  jobId: string,
+  progressPath: string,
+  scaleMin: number,
+  scaleMax: number
+): NodeJS.Timeout {
+  return setInterval(() => {
+    try {
+      const data = JSON.parse(fs.readFileSync(progressPath, 'utf-8'))
+      if (typeof data.percent === 'number') {
+        const scaled = scaleMin + (data.percent / 100) * (scaleMax - scaleMin)
+        writeStatus(jobId, {
+          percent: Math.round(scaled * 10) / 10,
+          message: data.stage_label || 'Processing...',
+          stage: data.stage,
+        })
+      }
+    } catch {
+      // progress.json may not exist yet, or be mid-write — ignore and retry
+    }
+  }, 1500)
+}
+
 export async function processUploadedVideo(jobId: string, videoPath: string, filename: string) {
   const outDir = path.join(PIPELINE_OUT_DIR, jobId)
 
   try {
     writeStatus(jobId, {
       state: 'processing',
-      message: 'Running motion detection & event segmentation (Modules 1-7)... this can take a few minutes',
+      message: 'Starting motion detection & event segmentation (Modules 1-7)...',
+      percent: 0,
     })
 
-    await runCommand(
-      'python',
-      [path.join(M1_7_DIR, 'run_pipeline.py'), videoPath, '--out-dir', outDir, '--no-clips'],
-      ROOT
-    )
+    const progressInterval = watchProgressFile(jobId, path.join(outDir, 'progress.json'), 0, 90)
+    try {
+      await runCommand(
+        'python',
+        [path.join(M1_7_DIR, 'run_pipeline.py'), videoPath, '--out-dir', outDir, '--no-clips'],
+        ROOT
+      )
+    } finally {
+      clearInterval(progressInterval)
+    }
 
-    writeStatus(jobId, { message: 'Running person & object detection (Modules 8-9)...' })
+    writeStatus(jobId, { message: 'Running person & object detection (Modules 8-9)...', percent: 90 })
 
     await runCommand(
       BACKEND_EXE,
@@ -105,7 +145,7 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
       M8_9_DIR
     )
 
-    writeStatus(jobId, { message: 'Finalizing results...' })
+    writeStatus(jobId, { message: 'Finalizing results...', percent: 98 })
 
     const enrichedPath = path.join(outDir, 'backend_output', 'enriched_events.json')
     const enriched = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'))
@@ -123,6 +163,7 @@ export async function processUploadedVideo(jobId: string, videoPath: string, fil
     writeStatus(jobId, {
       state: 'done',
       message: 'Processing complete',
+      percent: 100,
       videoId: enriched.video_id,
       eventCount: enriched.event_count,
     })
