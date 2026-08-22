@@ -142,6 +142,14 @@ type Offence struct {
 	DurationSec float64 `json:"durationSec,omitempty"` // loitering
 	Count       int     `json:"count,omitempty"`       // crowd size / people involved
 	Snapshot    string  `json:"snapshot,omitempty"`    // auto-captured still, app-relative
+
+	// Feature 10.4 — how unusual this offence's own region of the frame was at
+	// this moment, relative to that region's learned baseline for this video.
+	// RegionZ of 0 means "within normal range for this part of the room", which
+	// is recorded rather than hidden: it is the case where the geometry fired
+	// but the scene itself was not behaving abnormally.
+	Region  string  `json:"region,omitempty"`
+	RegionZ float64 `json:"regionZ,omitempty"`
 }
 
 type EnrichedEvent struct {
@@ -251,6 +259,14 @@ type Explanation struct {
 	ObjectBBox          []int    `json:"object_bbox,omitempty"`
 	SupportingFrameURLs []string `json:"supporting_frame_urls"`
 	UncertaintyReason   string   `json:"uncertainty_reason"`
+
+	// Grounding records how well this claim is actually anchored, as measured
+	// by validateGrounding — not as assumed by whoever wrote the claim.
+	//   "full"    — a spatial box AND a supporting frame
+	//   "spatial" — a box, but no retrievable frame to show
+	//   "temporal"— a frame, but no box locating the subject within it
+	// Claims that reach neither are dropped, never downgraded.
+	Grounding string `json:"grounding"`
 }
 
 type DetectionInfo struct {

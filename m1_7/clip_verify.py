@@ -24,12 +24,9 @@ Two limits are enforced rather than hoped for:
     head direction cannot be resolved by any model — returning a confident
     verdict there would launder a guess into evidence.
 
-Runs locally rather than against a hosted API. That was not the original
-plan: HuggingFace's free serverless inference no longer serves CLIP at all —
-querying their API for models servable for zero-shot image classification via
-the hf-inference provider returns a single pet-breed classifier. Locally there
-is no token, no rate limit, no network dependency, and the result is
-deterministic, which matters for something that annotates evidence.
+Runs locally. No token, no rate limit, no network dependency, and the result
+is deterministic — which matters for something that annotates evidence, since
+the same still must produce the same verdict on demo day as it did in testing.
 
 The model (~600MB) downloads once on first run and is cached thereafter.
 

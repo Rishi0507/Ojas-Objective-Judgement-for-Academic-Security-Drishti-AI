@@ -45,7 +45,7 @@ export function useAuth() {
       window.history.replaceState({}, '', window.location.pathname)
     }
 
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(({ data }: { data: any }) => {
       setState({
         user: data.user ?? null,
         loading: false,
@@ -54,7 +54,7 @@ export function useAuth() {
       })
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setState((s) => ({ ...s, user: session?.user ?? null, loading: false }))
     })
 

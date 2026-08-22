@@ -133,6 +133,10 @@ interface ExplanationData {
   object_bbox?: number[]
   supporting_frame_urls: string[]
   uncertainty_reason: string
+  // How well the claim is anchored (10.6). The backend drops anything that
+  // reaches neither, so "full" | "spatial" | "temporal" are the only values
+  // that arrive here.
+  grounding?: 'full' | 'spatial' | 'temporal'
 }
 
 interface OffenceData {
@@ -147,6 +151,10 @@ interface OffenceData {
   durationSec?: number
   count?: number
   snapshot?: string
+  // Feature 10.4 — the grid cell this offence sits in, and how far that cell
+  // departed from its own learned baseline at this moment.
+  region?: string
+  regionZ?: number
 }
 
 const OFFENCE_STYLES: Record<string, { label: string; cls: string }> = {
@@ -855,11 +863,30 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                             <Link2 className="w-4 h-4 text-primary" />
                             <span>Grounded AI Observation & Evidence Claims</span>
                           </span>
-                          {matchedEx?.uncertainty_reason && (
-                            <span className="px-2.5 py-0.5 rounded border text-[11px] font-mono bg-muted text-muted-foreground font-normal">
-                              {matchedEx.uncertainty_reason}
-                            </span>
-                          )}
+                          <span className="flex items-center gap-1.5">
+                            {/* What this claim is actually anchored to. Shown
+                                rather than assumed: "spatial" means there is a
+                                box but no frame to display, "temporal" means the
+                                reverse — a reviewer should weigh those
+                                differently from a fully evidenced finding. */}
+                            {matchedEx?.grounding && matchedEx.grounding !== 'full' && (
+                              <span
+                                title={
+                                  matchedEx.grounding === 'spatial'
+                                    ? 'Located in the frame, but no still is available to display'
+                                    : 'A still is available, but nothing locates the subject within it'
+                                }
+                                className="px-2.5 py-0.5 rounded border text-[11px] font-mono bg-amber-500/10 text-amber-600 border-amber-500/30 font-normal"
+                              >
+                                partial grounding: {matchedEx.grounding}
+                              </span>
+                            )}
+                            {matchedEx?.uncertainty_reason && (
+                              <span className="px-2.5 py-0.5 rounded border text-[11px] font-mono bg-muted text-muted-foreground font-normal">
+                                {matchedEx.uncertainty_reason}
+                              </span>
+                            )}
+                          </span>
                         </div>
 
                         <div className="space-y-2 text-xs text-foreground leading-relaxed">

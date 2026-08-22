@@ -48,6 +48,7 @@ def sample_frames(
     header: dict,
     target_fps: float = 5.0,
     use_seek_threshold: int = 10,
+    windows: Optional[list] = None,
 ) -> Iterator[Tuple[int, float, np.ndarray]]:
     """
     Yield (frame_idx, timestamp_sec, frame_bgr) tuples from the video
@@ -66,6 +67,12 @@ def sample_frames(
         If the computed stride exceeds this value, switch from sequential
         read+skip to CAP_PROP_POS_FRAMES seeking (faster for sparse sampling).
         Default 10. Set to a very large number to force sequential mode.
+    windows : list of {"start", "end"} in seconds, optional
+        Restrict sampling to these time ranges — the second pass of adaptive
+        coarse-to-fine processing (Module 10.5). Frames outside every window
+        are never decoded, so the saving is real rather than cosmetic: the
+        cheap pre-scan decides where the expensive stages are allowed to look.
+        None means sample the whole video.
 
     Yields
     ------
@@ -92,10 +99,27 @@ def sample_frames(
 
     stride = max(1, round(native_fps / target_fps))
     use_seek = stride >= use_seek_threshold
-    expected_sample_count = max(1, native_frame_count // stride)
 
     # Frame indices we *want* to sample.
     target_indices = range(0, native_frame_count, stride)
+
+    # Coarse-to-fine: keep only indices inside a flagged window. Restricting
+    # here rather than filtering downstream is the whole point — a frame never
+    # sampled is never decoded, differenced, flow-computed or YOLO'd.
+    if windows:
+        spans = [(float(w["start"]), float(w["end"])) for w in windows]
+        target_indices = [
+            i for i in target_indices
+            if any(lo <= i / native_fps <= hi for lo, hi in spans)
+        ]
+        if not target_indices:
+            raise RuntimeError(
+                "Coarse scan flagged no windows containing sampleable frames; "
+                "re-run without --windows or lower the scan threshold."
+            )
+        expected_sample_count = len(target_indices)
+    else:
+        expected_sample_count = max(1, native_frame_count // stride)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -119,6 +143,7 @@ def sample_frames(
         else:
             # Dense sampling: sequential read + skip. Faster when stride is
             # small because seeking has keyframe-decode overhead.
+            wanted = set(target_indices)
             frame_idx = 0
             next_target = 0
             while True:
@@ -126,7 +151,7 @@ def sample_frames(
                 if not ret:
                     break
                 if frame_idx == next_target:
-                    if _is_valid_frame(frame):
+                    if _is_valid_frame(frame) and (not windows or frame_idx in wanted):
                         timestamp = frame_idx / native_fps
                         yield frame_idx, timestamp, frame
                         yielded += 1
@@ -164,6 +189,16 @@ def _is_valid_frame(frame: Optional[np.ndarray]) -> bool:
     return True
 
 
+def _load_windows(path: Optional[str]) -> Optional[list]:
+    """Read quick_scan.py output, tolerating either its full report or a bare
+    window list. Returns None when no pre-scan was supplied."""
+    if not path:
+        return None
+    data = json.loads(Path(path).read_text())
+    windows = data.get("windows", data) if isinstance(data, dict) else data
+    return windows or None
+
+
 # ---------- high-level runner ----------
 
 def run_sampling(
@@ -173,6 +208,7 @@ def run_sampling(
     save_jpg_quality: int = 90,
     save_manifest: bool = True,
     max_width: int = 640,
+    windows: Optional[list] = None,
 ) -> dict:
     """
     Run frame sampling end-to-end. Optionally writes each sampled frame
@@ -214,6 +250,16 @@ def run_sampling(
 
     stride = max(1, round(native_fps / target_fps))
     expected = max(1, native_frame_count // stride)
+    if windows:
+        # With a coarse scan driving pass 2, only frames inside the flagged
+        # windows are sampled. Reporting the whole-video count here would make
+        # every coarse run look like it had lost ~40% of its frames.
+        covered = sum(max(0.0, float(w["end"]) - float(w["start"])) for w in windows)
+        # native_fps / stride, not target_fps: stride is an integer, so a
+        # requested 5fps against 8fps source actually samples at 4. Using the
+        # requested rate here overestimates by 25% and trips the shortfall
+        # warning below on a run that sampled exactly what it should have.
+        expected = max(1, int(covered * (native_fps / stride)))
 
     if out_dir:
         out_path = Path(out_dir)
@@ -224,7 +270,7 @@ def run_sampling(
         manifest_entries = None
 
     sampled = 0
-    for frame_idx, ts, frame in sample_frames(header, target_fps=target_fps):
+    for frame_idx, ts, frame in sample_frames(header, target_fps=target_fps, windows=windows):
         if out_path:
             if proc_scale < 1.0:
                 frame = cv2.resize(frame, (proc_width, proc_height),
@@ -301,6 +347,11 @@ def main():
         help="JPEG quality for saved frames (1-100). Default 90."
     )
     parser.add_argument(
+        "--windows", default=None,
+        help="Path to quick_scan.py JSON. Only frames inside its windows are "
+             "sampled (Module 10.5 pass 2). Omit to sample the whole video."
+    )
+    parser.add_argument(
         "--max-width", type=int, default=640,
         help="Downscale sampled frames to at most this width, preserving "
              "aspect ratio (default 640). This is the pipeline's main "
@@ -316,6 +367,7 @@ def main():
         out_dir=args.out_dir,
         save_jpg_quality=args.jpg_quality,
         max_width=args.max_width,
+        windows=_load_windows(args.windows),
     )
 
     print(json.dumps(summary, indent=2))

@@ -129,6 +129,29 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
         progress_so_far += STAGE_WEIGHTS[stage] * 100
         write_progress(out_dir, stage, progress_so_far)
 
+    # ---- Module 10.5 pass 1: coarse pre-scan (optional) ----
+    # A cheap 1fps, half-scale motion sweep decides which windows deserve the
+    # full pipeline. Off by default: it trades recall for speed, and on short
+    # clips the saving does not justify the risk of skipping a brief offence.
+    windows_path = None
+    if args.coarse_scan:
+        windows_path = out_dir / "coarse_windows.json"
+        run_step(
+            "Module 10.5 — Coarse pre-scan",
+            [sys.executable, str(HERE / "quick_scan.py"), str(video_path),
+             "--sample-fps", str(args.coarse_fps),
+             "--json", str(windows_path)],
+            logs_dir / "00_coarse_scan.log",
+        )
+        try:
+            scan = json.loads(windows_path.read_text())
+            cov = scan.get("coverage", {})
+            print(f"[coarse] {len(scan.get('windows', []))} window(s), "
+                  f"{cov.get('fraction_of_video', 0):.0%} of video flagged, "
+                  f"~{cov.get('estimated_work_saved', 0):.0%} of work skipped")
+        except (OSError, ValueError):
+            windows_path = None
+
     write_progress(out_dir, "module1_metadata", 0.0)
 
     # ---- Module 1: Metadata extraction ----
@@ -146,7 +169,8 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
         [sys.executable, str(HERE / "module2_frame_sampling.py"),
          str(header_path), "--out-dir", str(frames_dir),
          "--target-fps", str(args.target_fps),
-         "--max-width", str(args.max_width)],
+         "--max-width", str(args.max_width)]
+        + (["--windows", str(windows_path)] if windows_path else []),
         logs_dir / "02_frame_sampling.log",
     )
     mark_done("module2_frame_sampling")
@@ -203,6 +227,22 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
         logs_dir / "06_quality_analysis.log",
     )
     mark_done("module6_quality_analysis")
+
+    # ---- Module 10.4: per-region normality baselines ----
+    # Learns what "normal" looks like per grid region for THIS video, so a
+    # fixed global threshold does not have to generalise across halls,
+    # cameras and lighting. Runs after Modules 3-6 because it consumes their
+    # per-frame output. Non-fatal: a failure here must not lose the run.
+    try:
+        stage_timings["module10_region_baseline"] = run_step(
+            "Module 10.4 — Per-region normality baselines",
+            [sys.executable, str(HERE / "module10_region_baseline.py"),
+             "--pipeline-dir", str(out_dir),
+             "--grid", args.region_grid],
+            logs_dir / "10_region_baseline.log",
+        )
+    except RuntimeError as e:
+        print(f"[warn] region baselines skipped: {e}", file=sys.stderr)
 
     # ---- Module 7: Temporal event segmentation ----
     cmd7 = [sys.executable, str(HERE / "module7_event_segmentation.py"),
@@ -306,6 +346,14 @@ def main():
                          help="Module 3: skip the temporal spectral-residual jerk_score pass.")
     parser.add_argument("--jerk-sudden-thresh", type=float, default=0.6,
                          help="Module 7: peak_jerk_score threshold for motion_character='sudden'. Default 0.6.")
+    parser.add_argument("--coarse-scan", action="store_true",
+                         help="Module 10.5: run a cheap pre-scan first and process only "
+                              "the windows it flags. Faster on long, mostly-idle footage; "
+                              "can miss brief events, so it is opt-in.")
+    parser.add_argument("--coarse-fps", type=float, default=1.0,
+                         help="Sampling rate for the coarse pre-scan. Default 1.0.")
+    parser.add_argument("--region-grid", default="4x3",
+                         help="Module 10.4 grid as COLSxROWS. Default 4x3.")
     parser.add_argument("--max-width", type=int, default=640,
                          help="Module 2: downscale sampled frames to at most this width "
                               "(default 640). Primary speed control — Modules 3-6 all scale "
