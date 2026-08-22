@@ -1,0 +1,57 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# vercel
+.vercel
+
+# user-uploaded videos
+/uploads/
+
+# source footage (multi-GB, some over GitHub's 100MB hard limit) —
+# not committable; keep locally or distribute separately
+/clips/
+
+# generated pipeline output (frames, masks, flow fields, backend_output) —
+# regenerate via m1_7/run_pipeline.py + m8_9_golang/drishti-backend.exe
+/pipeline_out/
+
+# model weights — fetch via scripts/setup_yolo.ps1 / download_yolo_model.ps1
+*.pt
+*.onnx
+
+# compiled Go backend binary — rebuild with `go build` in m8_9_golang/
+m8_9_golang/*.exe
+m8_9_golang/models/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

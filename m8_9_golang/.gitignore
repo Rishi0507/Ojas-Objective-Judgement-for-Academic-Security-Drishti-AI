@@ -1,0 +1,37 @@
+# Binaries
+drishti-backend
+drishti-backend.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output from coverage
+*.out
+
+# Go workspace file
+go.work
+
+# YOLO models (large files)
+*.onnx
+*.pt
+*.pth
+*.weights
+
+# Test data
+test_data/
+output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

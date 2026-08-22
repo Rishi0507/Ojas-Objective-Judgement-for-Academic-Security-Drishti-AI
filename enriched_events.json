@@ -1,0 +1,514 @@
+{
+  "video_id": "demo_exam_video_001.mp4",
+  "video_path": "/videos/demo_exam_video_001.mp4",
+  "metadata": {
+    "resolution": "1920x1080",
+    "fps": 30.0,
+    "sampling": "5 fps",
+    "frames": 900,
+    "processingTime": "2m 34s"
+  },
+  "quality_metrics": {
+    "observability": 0.92,
+    "cameraShake": 0.15,
+    "blur": 0.08,
+    "lighting": 0.12,
+    "occlusion": 0.05
+  },
+  "event_count": 12,
+  "events": [
+    {
+      "id": "event-1",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 5.0,
+      "end": 16.6,
+      "duration": 11.6,
+      "motionScore": 0.86,
+      "cameraShake": 0.18,
+      "priority": "medium",
+      "type": "proximity",
+      "description": "Multiple persons detected in proximity (2 tracks, 86% motion)",
+      "trackId": "Track-03",
+      "roi": [
+        500,
+        300,
+        700,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event01.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event01_annotated.mp4",
+      "detection": {
+        "confidence": 0.86,
+        "object": "person"
+      },
+      "observability": 0.88,
+      "qualityFactors": {
+        "cameraShake": 0.18,
+        "blur": 0.0,
+        "occlusion": 0.09,
+        "lighting": 0.12
+      },
+      "evidence": [
+        "Motion score: 0.86 (peak), 0.73 (mean)",
+        "Observability: 0.88",
+        "Frames analyzed: 57",
+        "Person tracks detected: 2",
+        "Possible camera motion: 17.8% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-2",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 20.0,
+      "end": 29.3,
+      "duration": 9.3,
+      "motionScore": 0.76,
+      "cameraShake": 0.19,
+      "priority": "medium",
+      "type": "unusual_motion",
+      "description": "Person detected with unusual motion (1 tracks, 76% motion)",
+      "trackId": "Track-01",
+      "roi": [
+        510,
+        300,
+        710,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event02.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event02_annotated.mp4",
+      "detection": {
+        "confidence": 0.76,
+        "object": "person with paper"
+      },
+      "observability": 0.91,
+      "qualityFactors": {
+        "cameraShake": 0.19,
+        "blur": 0.1,
+        "occlusion": 0.06,
+        "lighting": 0.09
+      },
+      "evidence": [
+        "Motion score: 0.76 (peak), 0.65 (mean)",
+        "Observability: 0.91",
+        "Frames analyzed: 46",
+        "Person tracks detected: 1",
+        "Paper/book detected in frame",
+        "Possible camera motion: 19.2% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-3",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 35.0,
+      "end": 40.1,
+      "duration": 5.1,
+      "motionScore": 0.76,
+      "cameraShake": 0.21,
+      "priority": "high",
+      "type": "paper_activity",
+      "description": "Paper/chit detected near person (1 tracks, 76% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        520,
+        300,
+        720,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event03.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event03_annotated.mp4",
+      "detection": {
+        "confidence": 0.76,
+        "object": "person with paper"
+      },
+      "observability": 0.94,
+      "qualityFactors": {
+        "cameraShake": 0.21,
+        "blur": 0.1,
+        "occlusion": 0.1,
+        "lighting": 0.06
+      },
+      "evidence": [
+        "Motion score: 0.76 (peak), 0.64 (mean)",
+        "Observability: 0.94",
+        "Frames analyzed: 25",
+        "Person tracks detected: 1",
+        "Paper/book detected in frame",
+        "Possible camera motion: 21.4% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-4",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 50.0,
+      "end": 57.4,
+      "duration": 7.4,
+      "motionScore": 0.66,
+      "cameraShake": 0.13,
+      "priority": "high",
+      "type": "phone_activity",
+      "description": "Person detected with cell phone (1 tracks, 66% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        530,
+        300,
+        730,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event04.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event04_annotated.mp4",
+      "detection": {
+        "confidence": 0.66,
+        "object": "person with phone"
+      },
+      "observability": 0.91,
+      "qualityFactors": {
+        "cameraShake": 0.13,
+        "blur": 0.13,
+        "occlusion": 0.01,
+        "lighting": 0.09
+      },
+      "evidence": [
+        "Motion score: 0.66 (peak), 0.56 (mean)",
+        "Observability: 0.91",
+        "Frames analyzed: 36",
+        "Person tracks detected: 1",
+        "Cell phone detected in frame"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-5",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 65.0,
+      "end": 72.3,
+      "duration": 7.3,
+      "motionScore": 0.69,
+      "cameraShake": 0.21,
+      "priority": "medium",
+      "type": "proximity",
+      "description": "Multiple persons detected in proximity (1 tracks, 69% motion)",
+      "trackId": "Track-03",
+      "roi": [
+        540,
+        300,
+        740,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event05.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event05_annotated.mp4",
+      "detection": {
+        "confidence": 0.69,
+        "object": "person"
+      },
+      "observability": 0.9,
+      "qualityFactors": {
+        "cameraShake": 0.21,
+        "blur": 0.07,
+        "occlusion": 0.06,
+        "lighting": 0.1
+      },
+      "evidence": [
+        "Motion score: 0.69 (peak), 0.59 (mean)",
+        "Observability: 0.90",
+        "Frames analyzed: 36",
+        "Person tracks detected: 1",
+        "Possible camera motion: 20.8% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-6",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 80.0,
+      "end": 86.7,
+      "duration": 6.7,
+      "motionScore": 0.71,
+      "cameraShake": 0.07,
+      "priority": "medium",
+      "type": "unusual_motion",
+      "description": "Person detected with unusual motion (1 tracks, 71% motion)",
+      "trackId": "Track-01",
+      "roi": [
+        550,
+        300,
+        750,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event06.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event06_annotated.mp4",
+      "detection": {
+        "confidence": 0.71,
+        "object": "person with paper"
+      },
+      "observability": 0.88,
+      "qualityFactors": {
+        "cameraShake": 0.07,
+        "blur": 0.12,
+        "occlusion": 0.1,
+        "lighting": 0.12
+      },
+      "evidence": [
+        "Motion score: 0.71 (peak), 0.60 (mean)",
+        "Observability: 0.88",
+        "Frames analyzed: 33",
+        "Person tracks detected: 1",
+        "Paper/book detected in frame"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-7",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 95.0,
+      "end": 106.4,
+      "duration": 11.4,
+      "motionScore": 0.88,
+      "cameraShake": 0.22,
+      "priority": "high",
+      "type": "phone_activity",
+      "description": "Person detected with cell phone (1 tracks, 88% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        560,
+        300,
+        760,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event07.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event07_annotated.mp4",
+      "detection": {
+        "confidence": 0.88,
+        "object": "person with phone"
+      },
+      "observability": 0.86,
+      "qualityFactors": {
+        "cameraShake": 0.22,
+        "blur": 0.1,
+        "occlusion": 0.01,
+        "lighting": 0.14
+      },
+      "evidence": [
+        "Motion score: 0.88 (peak), 0.75 (mean)",
+        "Observability: 0.86",
+        "Frames analyzed: 57",
+        "Person tracks detected: 1",
+        "Cell phone detected in frame",
+        "Possible camera motion: 22.5% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-8",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 110.0,
+      "end": 121.0,
+      "duration": 11.0,
+      "motionScore": 0.93,
+      "cameraShake": 0.22,
+      "priority": "high",
+      "type": "phone_activity",
+      "description": "Person detected with cell phone (1 tracks, 93% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        570,
+        300,
+        770,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event08.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event08_annotated.mp4",
+      "detection": {
+        "confidence": 0.93,
+        "object": "person with phone"
+      },
+      "observability": 0.92,
+      "qualityFactors": {
+        "cameraShake": 0.22,
+        "blur": 0.14,
+        "occlusion": 0.1,
+        "lighting": 0.08
+      },
+      "evidence": [
+        "Motion score: 0.93 (peak), 0.79 (mean)",
+        "Observability: 0.92",
+        "Frames analyzed: 54",
+        "Person tracks detected: 1",
+        "Cell phone detected in frame",
+        "Possible camera motion: 22.1% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-9",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 125.0,
+      "end": 134.0,
+      "duration": 9.0,
+      "motionScore": 0.71,
+      "cameraShake": 0.06,
+      "priority": "high",
+      "type": "paper_activity",
+      "description": "Paper/chit detected near person (1 tracks, 71% motion)",
+      "trackId": "Track-03",
+      "roi": [
+        580,
+        300,
+        780,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event09.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event09_annotated.mp4",
+      "detection": {
+        "confidence": 0.71,
+        "object": "person with paper"
+      },
+      "observability": 0.9,
+      "qualityFactors": {
+        "cameraShake": 0.06,
+        "blur": 0.04,
+        "occlusion": 0.05,
+        "lighting": 0.1
+      },
+      "evidence": [
+        "Motion score: 0.71 (peak), 0.60 (mean)",
+        "Observability: 0.90",
+        "Frames analyzed: 44",
+        "Person tracks detected: 1",
+        "Paper/book detected in frame"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-10",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 140.0,
+      "end": 147.2,
+      "duration": 7.2,
+      "motionScore": 0.8,
+      "cameraShake": 0.18,
+      "priority": "high",
+      "type": "paper_activity",
+      "description": "Paper/chit detected near person (1 tracks, 80% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        590,
+        300,
+        790,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event10.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event10_annotated.mp4",
+      "detection": {
+        "confidence": 0.8,
+        "object": "person with paper"
+      },
+      "observability": 0.88,
+      "qualityFactors": {
+        "cameraShake": 0.18,
+        "blur": 0.09,
+        "occlusion": 0.1,
+        "lighting": 0.12
+      },
+      "evidence": [
+        "Motion score: 0.80 (peak), 0.68 (mean)",
+        "Observability: 0.88",
+        "Frames analyzed: 36",
+        "Person tracks detected: 1",
+        "Paper/book detected in frame",
+        "Possible camera motion: 18.5% of frames"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-11",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 155.0,
+      "end": 163.5,
+      "duration": 8.5,
+      "motionScore": 0.61,
+      "cameraShake": 0.13,
+      "priority": "high",
+      "type": "phone_activity",
+      "description": "Person detected with cell phone (1 tracks, 61% motion)",
+      "trackId": "Track-03",
+      "roi": [
+        600,
+        300,
+        800,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event11.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event11_annotated.mp4",
+      "detection": {
+        "confidence": 0.61,
+        "object": "person with phone"
+      },
+      "observability": 0.87,
+      "qualityFactors": {
+        "cameraShake": 0.13,
+        "blur": 0.14,
+        "occlusion": 0.04,
+        "lighting": 0.13
+      },
+      "evidence": [
+        "Motion score: 0.61 (peak), 0.52 (mean)",
+        "Observability: 0.87",
+        "Frames analyzed: 42",
+        "Person tracks detected: 1",
+        "Cell phone detected in frame"
+      ],
+      "status": "unreviewed"
+    },
+    {
+      "id": "event-12",
+      "videoId": "demo_exam_video_001.mp4",
+      "start": 170.0,
+      "end": 177.9,
+      "duration": 7.9,
+      "motionScore": 0.62,
+      "cameraShake": 0.22,
+      "priority": "medium",
+      "type": "proximity",
+      "description": "Multiple persons detected in proximity (2 tracks, 62% motion)",
+      "trackId": "Track-02",
+      "roi": [
+        610,
+        300,
+        810,
+        800
+      ],
+      "clipUrl": "/clips/demo_exam_video_001.mp4_event12.mp4",
+      "annotatedClipUrl": "/clips/demo_exam_video_001.mp4_event12_annotated.mp4",
+      "detection": {
+        "confidence": 0.62,
+        "object": "person"
+      },
+      "observability": 0.97,
+      "qualityFactors": {
+        "cameraShake": 0.22,
+        "blur": 0.05,
+        "occlusion": 0.04,
+        "lighting": 0.03
+      },
+      "evidence": [
+        "Motion score: 0.62 (peak), 0.53 (mean)",
+        "Observability: 0.97",
+        "Frames analyzed: 39",
+        "Person tracks detected: 2",
+        "Possible camera motion: 22.4% of frames"
+      ],
+      "status": "unreviewed"
+    }
+  ],
+  "processing_info": {
+    "total_elapsed_sec": 154.3,
+    "modules_run": [
+      "1-7 (Python)",
+      "8-9 (Golang - Mock Mode)"
+    ],
+    "timestamp": "2026-08-21T18:32:17.473409"
+  }
+}
