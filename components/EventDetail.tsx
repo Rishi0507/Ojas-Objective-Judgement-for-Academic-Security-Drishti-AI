@@ -329,9 +329,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               <div className="absolute top-4 right-4 px-3 py-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border font-mono text-sm">
                 {formatTime(eventData.start)} - {formatTime(eventData.end)}
               </div>
-              <div className="absolute bottom-4 left-4 px-3 py-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border font-mono text-xs">
-                Current: {formatTime(currentTime)}
-              </div>
+
             </div>
             <div className="p-4 border-t border-border space-y-3">
               <div className="flex items-center gap-3">
@@ -431,6 +429,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                 />
                 <div className="flex justify-between text-xs text-muted-foreground font-mono">
                   <span>{formatTime(eventData.start)}</span>
+                  <span className="text-foreground font-semibold">Current: {formatTime(currentTime)}</span>
                   <span>{formatTime(eventData.end)}</span>
                 </div>
               </div>
