@@ -108,6 +108,21 @@ func (d *YOLODetector) DetectFrame(framePath string, roi image.Rectangle) ([]Det
 	return detections, nil
 }
 
+// PoseFrame is everyone's skeleton on one frame.
+type PoseFrame struct {
+	FrameIdx     int
+	TimestampSec float64
+	People       []YOLOPose
+}
+
+// DetectPose returns body keypoints for everyone in a frame.
+func (d *YOLODetector) DetectPose(framePath string) ([]YOLOPose, error) {
+	if d.pythonBridge == nil {
+		return nil, fmt.Errorf("pose requires the Python inference service")
+	}
+	return d.pythonBridge.InferPose(framePath)
+}
+
 // AnnotateFrame draws bounding boxes using Python service
 func (d *YOLODetector) AnnotateFrame(framePath string, detections []Detection, outputPath string) error {
 	// Convert detections to Python format

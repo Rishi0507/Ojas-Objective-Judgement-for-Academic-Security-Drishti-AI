@@ -23,16 +23,34 @@ except ImportError:
     YOLO_AVAILABLE = False
     print(json.dumps({"error": "ultralytics not installed. Run: pip install ultralytics"}), file=sys.stderr)
 
+# COCO pose keypoint order, as emitted by yolov8*-pose models.
+KEYPOINT_NAMES = [
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+]
+
+
 class YOLOInferenceService:
-    def __init__(self, model_path="yolov8n.pt", confidence=0.25):
+    def __init__(self, model_path="yolov8n.pt", confidence=0.25,
+                 pose_model_path="yolov8n-pose.pt"):
         """Initialize YOLO model"""
         if not YOLO_AVAILABLE:
             raise ImportError("ultralytics package not available")
-        
+
         # Load model with verbose=False
         self.model = YOLO(model_path, verbose=False)
         self.confidence = confidence
         self.class_names = self.model.names  # COCO class names
+
+        # Pose model is separate from the detector: the detector supplies the
+        # prohibited-object classes, while body keypoints are what make head
+        # turns and hand gestures observable at all — a bounding box cannot
+        # say which way someone is facing. Loaded lazily so a missing pose
+        # model degrades to object/person detection instead of failing.
+        self.pose_model = None
+        self.pose_model_path = pose_model_path
         
         # Find class IDs
         self.person_class_id = None
@@ -105,6 +123,51 @@ class YOLOInferenceService:
         
         return {"detections": detections}
     
+    def _ensure_pose_model(self):
+        if self.pose_model is None:
+            self.pose_model = YOLO(self.pose_model_path, verbose=False)
+        return self.pose_model
+
+    def infer_pose(self, frame_path):
+        """
+        Run pose estimation on a full frame.
+
+        Returns one entry per person: their bounding box plus 17 COCO
+        keypoints as [x, y, confidence]. Run on the whole frame rather than
+        per-ROI, because a turned head or an extended arm frequently crosses
+        the ROI boundary that motion detection drew.
+        """
+        model = self._ensure_pose_model()
+
+        img = cv2.imread(frame_path)
+        if img is None:
+            return {"error": f"Failed to load image: {frame_path}"}
+
+        results = model(img, conf=self.confidence, verbose=False)
+
+        people = []
+        for result in results:
+            if result.keypoints is None or result.boxes is None:
+                continue
+            kp = result.keypoints.data.cpu().numpy()   # (persons, 17, 3)
+            boxes = result.boxes
+            for i in range(len(boxes)):
+                x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy()
+                joints = []
+                for j in range(kp.shape[1]):
+                    x, y, c = kp[i][j]
+                    joints.append({
+                        "name": KEYPOINT_NAMES[j] if j < len(KEYPOINT_NAMES) else str(j),
+                        "x": float(x), "y": float(y), "conf": float(c),
+                    })
+                people.append({
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                    "confidence": float(boxes.conf[i]),
+                    "keypoints": joints,
+                })
+
+        return {"people": people}
+
     def annotate_frame(self, frame_path, detections, output_path):
         """
         Draw bounding boxes on frame and save
@@ -186,6 +249,10 @@ def main():
                 )
                 print(json.dumps(result), flush=True)
             
+            elif command.get("action") == "pose":
+                result = service.infer_pose(command["frame_path"])
+                print(json.dumps(result), flush=True)
+
             elif command.get("action") == "ping":
                 print(json.dumps({"status": "alive"}), flush=True)
             
