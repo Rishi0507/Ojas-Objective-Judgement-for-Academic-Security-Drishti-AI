@@ -127,11 +127,29 @@ type BBox struct {
 	Confidence   float64 `json:"confidence"`
 }
 
+// Offence is one concrete, evidenced finding inside an event — the thing an
+// investigator actually reviews. An event says "something happened here";
+// an offence says what, when, to whom, and points at the still that proves it.
+type Offence struct {
+	Type        string  `json:"type"`  // prohibited_object | loitering | crowd_disturbance | object_exchange | motion_anomaly
+	Label       string  `json:"label"` // human-readable summary
+	TrackID     string  `json:"trackId,omitempty"`
+	StartSec    float64 `json:"startSec"`
+	EndSec      float64 `json:"endSec"`
+	FrameIdx    int     `json:"frameIdx"`
+	Confidence  float64 `json:"confidence"`
+	BBox        []int   `json:"bbox,omitempty"`        // [x1,y1,x2,y2] in processing resolution
+	DurationSec float64 `json:"durationSec,omitempty"` // loitering
+	Count       int     `json:"count,omitempty"`       // crowd size / people involved
+	Snapshot    string  `json:"snapshot,omitempty"`    // auto-captured still, app-relative
+}
+
 type EnrichedEvent struct {
 	Event                                       // Embed original event
 	PersonTracks     []PersonTrack     `json:"person_tracks"`
 	ObjectDetections []ObjectDetection `json:"object_detections"`
 	DetectionSummary DetectionSummary  `json:"detection_summary"`
+	Offences         []Offence         `json:"offences"`
 }
 
 type DetectionSummary struct {
@@ -184,6 +202,8 @@ type APIEvent struct {
 	Status          string           `json:"status"`
 	MotionCharacter string           `json:"motionCharacter"` // "sudden" | "gradual" | "" (unavailable)
 	PeakJerkScore   float64          `json:"jerkScore"`
+	Offences        []Offence        `json:"offences"`
+	Snapshots       []string         `json:"snapshots"` // auto-captured evidence stills
 }
 
 type DetectionInfo struct {
