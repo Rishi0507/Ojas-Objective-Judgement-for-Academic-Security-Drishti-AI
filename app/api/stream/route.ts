@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+const CONTENT_TYPES: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.mkv': 'video/x-matroska',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+};
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -21,7 +29,8 @@ export async function GET(request: NextRequest) {
     const stat = fs.statSync(fullPath);
     const fileSize = stat.size;
     const range = request.headers.get('range');
-    
+    const contentType = CONTENT_TYPES[path.extname(fullPath).toLowerCase()] ?? 'application/octet-stream';
+
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -32,14 +41,14 @@ export async function GET(request: NextRequest) {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize.toString(),
-        'Content-Type': 'video/mp4',
+        'Content-Type': contentType,
       };
-      
+
       return new NextResponse(file as any, { status: 206, headers: head });
     } else {
       const head = {
         'Content-Length': fileSize.toString(),
-        'Content-Type': 'video/mp4',
+        'Content-Type': contentType,
       };
       const file = fs.createReadStream(fullPath);
       return new NextResponse(file as any, { status: 200, headers: head });

@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Video, Activity, AlertTriangle, CheckCircle, Clock, TrendingUp, Eye, Upload, Loader2, XCircle } from 'lucide-react'
+import { Video, Activity, AlertTriangle, CheckCircle, Clock, TrendingUp, Eye, Upload } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import type { JobStatus } from '@/lib/useUploadJob'
 
 interface DashboardProps {
   onVideoSelect: (videoId: string) => void
+  job: JobStatus | null
+  onUploadFile: (file: File) => void
 }
 
 interface VideoData {
@@ -30,30 +33,23 @@ interface VideoData {
   events: any[]
 }
 
-interface JobStatus {
-  jobId: string
-  state: 'queued' | 'processing' | 'done' | 'error'
-  message: string
-  filename: string
-  error?: string
-}
-
-export default function Dashboard({ onVideoSelect }: DashboardProps) {
+export default function Dashboard({ onVideoSelect, job, onUploadFile }: DashboardProps) {
   const [videoData, setVideoData] = useState<VideoData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [job, setJob] = useState<JobStatus | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadVideoData = () => {
     fetch('/api/video')
       .then(res => res.json())
       .then(data => {
-        setVideoData(data)
+        // 404 ("No data available") comes back as { error: '...' } with a
+        // 200-parseable body — treat it as "no video yet", not a crash.
+        setVideoData(data && !data.error ? data : null)
         setLoading(false)
       })
       .catch(err => {
         console.error('Failed to load video data:', err)
+        setVideoData(null)
         setLoading(false)
       })
   }
@@ -62,46 +58,20 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
     loadVideoData()
   }, [])
 
-  // Poll the processing job until it finishes, then refresh the dashboard
-  // with the newly processed video's results.
+  // job/upload polling now lives in page.tsx (via useUploadJob) so it
+  // survives switching tabs — this just reacts to the prop when it flips
+  // to "done" and refreshes with the newly processed video's results.
   useEffect(() => {
-    if (!job || !job.jobId || job.state === 'done' || job.state === 'error') return
-    const interval = setInterval(() => {
-      fetch(`/api/upload/status?job=${job.jobId}`)
-        .then(res => res.json())
-        .then((status: JobStatus) => {
-          setJob(status)
-          if (status.state === 'done') {
-            loadVideoData()
-          }
-        })
-        .catch(err => console.error('Failed to poll job status:', err))
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [job])
+    if (job?.state === 'done') {
+      loadVideoData()
+    }
+  }, [job?.state, job?.jobId])
 
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-selecting the same file later
     if (!file) return
-
-    setUploadError(null)
-    setJob({ jobId: '', state: 'queued', message: 'Uploading video...', filename: file.name })
-
-    const formData = new FormData()
-    formData.append('video', file)
-
-    try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Upload failed')
-      }
-      setJob({ jobId: data.jobId, state: 'queued', message: 'Queued for processing', filename: file.name })
-    } catch (err: any) {
-      setUploadError(err?.message ?? 'Upload failed')
-      setJob(null)
-    }
+    onUploadFile(file)
   }
 
   if (loading) {
@@ -112,41 +82,33 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
     )
   }
 
-  if (!videoData) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Failed to load data</div>
-      </div>
-    )
-  }
-
-  // Calculate stats from real data
-  const totalVideos = 1
-  const totalEvents = videoData.event_count
-  const highPriorityCount = videoData.events.filter(e => e.priority === 'high').length
+  // Calculate stats from real data (all zero when no video has been processed yet)
+  const totalVideos = videoData ? 1 : 0
+  const totalEvents = videoData?.event_count ?? 0
+  const highPriorityCount = videoData ? videoData.events.filter(e => e.priority === 'high').length : 0
   const reviewedCount = 0 // None reviewed yet
 
   const stats = [
-    { label: 'Total Videos', value: totalVideos.toString(), icon: Video, change: 'Processed' },
+    { label: 'Total Videos', value: totalVideos.toString(), icon: Video, change: videoData ? 'Processed' : 'None yet' },
     { label: 'Events Detected', value: totalEvents.toString(), icon: Activity, change: 'Real events' },
     { label: 'High Priority', value: highPriorityCount.toString(), icon: AlertTriangle, change: 'Unreviewed' },
     { label: 'Reviewed', value: reviewedCount.toString(), icon: CheckCircle, change: '0%' },
   ]
 
   // Generate activity data from events
-  const activityData = Array.from({ length: Math.ceil(videoData.events[videoData.events.length - 1]?.end / 10) || 24 }, (_, i) => {
+  const activityData = videoData ? Array.from({ length: Math.ceil(videoData.events[videoData.events.length - 1]?.end / 10) || 24 }, (_, i) => {
     const timeSlot = i * 10
-    const eventsInSlot = videoData.events.filter(e => 
+    const eventsInSlot = videoData.events.filter(e =>
       e.start <= timeSlot + 10 && e.end >= timeSlot
     ).length
     return {
       hour: timeSlot,
       events: eventsInSlot * 10
     }
-  })
+  }) : []
 
   // Format video for display
-  const video = {
+  const video = videoData ? {
     id: videoData.video_id,
     name: videoData.video_id,
     duration: `${Math.floor(videoData.events[videoData.events.length - 1]?.end / 60)}:${Math.floor(videoData.events[videoData.events.length - 1]?.end % 60).toString().padStart(2, '0')}`,
@@ -154,7 +116,7 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
     events: videoData.event_count,
     quality: videoData.quality_metrics.observability,
     timestamp: 'Recently processed'
-  }
+  } : null
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
@@ -184,39 +146,6 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
           </button>
         </div>
       </div>
-
-      {job && (job.state === 'queued' || job.state === 'processing') && (
-        <div className="card p-4 flex items-center gap-3 border-primary/20 bg-primary/5">
-          <Loader2 className="w-5 h-5 animate-spin text-primary flex-shrink-0" strokeWidth={2} />
-          <div className="min-w-0">
-            <div className="font-medium truncate">Processing "{job.filename}"</div>
-            <div className="text-sm text-muted-foreground">{job.message}</div>
-          </div>
-        </div>
-      )}
-
-      {job && job.state === 'error' && (
-        <div className="card p-4 flex items-start gap-3 border-red-200 bg-red-50">
-          <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
-          <div className="min-w-0 flex-1">
-            <div className="font-medium text-red-700">Failed to process "{job.filename}"</div>
-            <div className="text-sm text-red-600 mt-1 break-words">{job.error || job.message}</div>
-          </div>
-          <button onClick={() => setJob(null)} className="text-red-600 hover:text-red-800 text-sm font-medium flex-shrink-0">
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {uploadError && (
-        <div className="card p-4 flex items-start gap-3 border-red-200 bg-red-50">
-          <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
-          <div className="min-w-0 flex-1 text-sm text-red-600">{uploadError}</div>
-          <button onClick={() => setUploadError(null)} className="text-red-600 hover:text-red-800 text-sm font-medium flex-shrink-0">
-            Dismiss
-          </button>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => {
@@ -249,7 +178,7 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Activity Timeline</h2>
-              <p className="text-sm text-muted-foreground">Video duration: {video.duration}</p>
+              <p className="text-sm text-muted-foreground">Video duration: {video?.duration ?? '—'}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
@@ -294,7 +223,7 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
             {[
               { label: 'Processing Queue', value: '0/1', percent: 0 },
               { label: 'Events Detected', value: totalEvents.toString(), percent: (totalEvents / 10) * 100 },
-              { label: 'Quality Score', value: (videoData.quality_metrics.observability * 100).toFixed(0) + '%', percent: videoData.quality_metrics.observability * 100 },
+              { label: 'Quality Score', value: videoData ? (videoData.quality_metrics.observability * 100).toFixed(0) + '%' : '—', percent: (videoData?.quality_metrics.observability ?? 0) * 100 },
             ].map((item, i) => (
               <div key={i}>
                 <div className="flex justify-between text-sm mb-2">
@@ -320,42 +249,60 @@ export default function Dashboard({ onVideoSelect }: DashboardProps) {
             <p className="text-sm text-muted-foreground">Click to view analysis</p>
           </div>
         </div>
-        <div className="space-y-3">
-          <button
-            onClick={() => onVideoSelect(video.id)}
-            className="w-full p-4 card card-hover text-left"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-primary/5 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Video className="w-6 h-6 text-primary" strokeWidth={2} />
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="font-medium mb-1">{video.name}</div>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    {video.duration}
-                  </span>
-                  <span>•</span>
-                  <span>{video.events} events</span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 font-mono">
-                    <Eye className="w-4 h-4" />
-                    {video.quality.toFixed(2)}
+        {video ? (
+          <div className="space-y-3">
+            <button
+              onClick={() => onVideoSelect(video.id)}
+              className="w-full p-4 card card-hover text-left"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-primary/5 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Video className="w-6 h-6 text-primary" strokeWidth={2} />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium mb-1">{video.name}</div>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-4 h-4" />
+                      {video.duration}
+                    </span>
+                    <span>•</span>
+                    <span>{video.events} events</span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 font-mono">
+                      <Eye className="w-4 h-4" />
+                      {video.quality.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right flex-shrink-0">
+                  <div className="text-xs text-muted-foreground mb-2">{video.timestamp}</div>
+                  <span className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200">
+                    Completed
                   </span>
                 </div>
               </div>
-
-              <div className="text-right flex-shrink-0">
-                <div className="text-xs text-muted-foreground mb-2">{video.timestamp}</div>
-                <span className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200">
-                  Completed
-                </span>
-              </div>
+            </button>
+          </div>
+        ) : (
+          <div className="py-12 flex flex-col items-center justify-center text-center">
+            <div className="w-14 h-14 bg-muted rounded-lg flex items-center justify-center mb-4">
+              <Video className="w-6 h-6 text-muted-foreground" strokeWidth={2} />
             </div>
-          </button>
-        </div>
+            <div className="font-medium mb-1">No videos processed yet</div>
+            <p className="text-sm text-muted-foreground mb-4">Upload a video to run it through the analytics pipeline.</p>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!!job && job.state !== 'done' && job.state !== 'error'}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Upload className="w-4 h-4" strokeWidth={2} />
+              Upload Video
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

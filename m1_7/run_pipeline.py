@@ -37,6 +37,46 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
+# Empirically-derived relative stage weights, from a real pipeline run
+# (pipeline_out/cctv_video/pipeline_summary.json's stage_timings_sec:
+# module3's per-frame ensemble motion detection alone is ~60% of total
+# wall time). Used to report a realistic completion percentage instead of
+# a naive "1 of 7 stages" fraction, which would badly understate progress
+# while module3 is running and overstate it everywhere else.
+STAGE_WEIGHTS = {
+    "module1_metadata": 0.013,
+    "module2_frame_sampling": 0.034,
+    "module3_motion_detection": 0.602,
+    "module4_mask_cleanup": 0.077,
+    "module5_roi_extraction": 0.057,
+    "module6_quality_analysis": 0.206,
+    "module7_event_segmentation": 0.011,
+}
+STAGE_LABELS = {
+    "module1_metadata": "Extracting metadata",
+    "module2_frame_sampling": "Sampling frames",
+    "module3_motion_detection": "Detecting motion (frame-diff + background subtraction + optical flow)",
+    "module4_mask_cleanup": "Cleaning up motion masks",
+    "module5_roi_extraction": "Extracting regions of interest",
+    "module6_quality_analysis": "Analyzing camera shake, blur, and lighting",
+    "module7_event_segmentation": "Segmenting events",
+}
+
+
+def write_progress(out_dir: Path, stage: str, percent: float) -> None:
+    """Write the current stage + cumulative completion percent so a
+    long-running caller (e.g. the Next.js upload API) can poll this file
+    instead of only seeing a static "processing..." message for minutes."""
+    payload = {
+        "stage": stage,
+        "stage_label": STAGE_LABELS.get(stage, stage),
+        "percent": round(percent, 1),
+    }
+    try:
+        (out_dir / "progress.json").write_text(json.dumps(payload))
+    except OSError:
+        pass  # progress reporting is best-effort, never fatal to the pipeline
+
 
 def run_step(name: str, cmd: list, log_file: Path):
     """Run one module's CLI as a subprocess, streaming its stdout/stderr
@@ -82,6 +122,14 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
     events_dir = out_dir / "events"
 
     stage_timings = {}
+    progress_so_far = 0.0
+
+    def mark_done(stage: str) -> None:
+        nonlocal progress_so_far
+        progress_so_far += STAGE_WEIGHTS[stage] * 100
+        write_progress(out_dir, stage, progress_so_far)
+
+    write_progress(out_dir, "module1_metadata", 0.0)
 
     # ---- Module 1: Metadata extraction ----
     stage_timings["module1_metadata"] = run_step(
@@ -90,6 +138,7 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          str(video_path), "--out", str(header_path)],
         logs_dir / "01_metadata.log",
     )
+    mark_done("module1_metadata")
 
     # ---- Module 2: Frame sampling ----
     stage_timings["module2_frame_sampling"] = run_step(
@@ -99,6 +148,7 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          "--target-fps", str(args.target_fps)],
         logs_dir / "02_frame_sampling.log",
     )
+    mark_done("module2_frame_sampling")
     manifest_path = frames_dir / "manifest.json"
 
     # ---- Module 3: Motion detection (ensemble) + optical flow ----
@@ -109,11 +159,13 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
     if args.disable_jerk:
         cmd3.append("--disable-jerk")
 
+    write_progress(out_dir, "module3_motion_detection", progress_so_far)
     stage_timings["module3_motion_detection"] = run_step(
         "Module 3 — Motion Detection (frame-diff + MOG2/KNN + optical flow)",
         cmd3,
         logs_dir / "03_motion_detection.log",
     )
+    mark_done("module3_motion_detection")
 
     # ---- Module 4: Mask cleanup ----
     stage_timings["module4_mask_cleanup"] = run_step(
@@ -123,6 +175,7 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          "--stats-out", str(out_dir / "cleanup_stats.json")],
         logs_dir / "04_mask_cleanup.log",
     )
+    mark_done("module4_mask_cleanup")
 
     # ---- Module 5: ROI extraction (connected components + merge) ----
     stage_timings["module5_roi_extraction"] = run_step(
@@ -133,6 +186,7 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          "--out-dir", str(rois_dir)],
         logs_dir / "05_roi_extraction.log",
     )
+    mark_done("module5_roi_extraction")
     rois_json = rois_dir / "rois_per_frame.json"
 
     # ---- Module 6: Camera & video quality analysis ----
@@ -146,6 +200,7 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
          "--out", str(quality_csv)],
         logs_dir / "06_quality_analysis.log",
     )
+    mark_done("module6_quality_analysis")
 
     # ---- Module 7: Temporal event segmentation ----
     cmd7 = [sys.executable, str(HERE / "module7_event_segmentation.py"),
@@ -170,6 +225,8 @@ def run_pipeline(video_path: str, out_dir: str, args) -> dict:
         cmd7,
         logs_dir / "07_event_segmentation.log",
     )
+    mark_done("module7_event_segmentation")
+    write_progress(out_dir, "done", 100.0)
 
     # ---- Summary ----
     events_json_path = events_dir / "events.json"

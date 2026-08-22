@@ -8,7 +8,8 @@ import Dashboard from '@/components/Dashboard'
 import VideoAnalysis from '@/components/VideoAnalysis'
 import EventsList from '@/components/EventsList'
 import EventDetail from '@/components/EventDetail'
-import { X } from 'lucide-react'
+import { X, Loader2, XCircle } from 'lucide-react'
+import { useUploadJob } from '@/lib/useUploadJob'
 
 export default function Home() {
   const [showHero, setShowHero] = useState(true)
@@ -16,6 +17,12 @@ export default function Home() {
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [eventOrigin, setEventOrigin] = useState<'analysis' | 'events'>('events')
+
+  // Lives here (not inside Dashboard) so switching tabs never interrupts
+  // polling or loses track of an in-progress upload — the pipeline itself
+  // runs server-side regardless, this just keeps the UI in sync with it
+  // no matter which view is active.
+  const { job, uploadError, uploadFile, dismissJob, dismissError } = useUploadJob(() => {})
 
   if (showHero) {
     return (
@@ -42,9 +49,57 @@ export default function Home() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
 
+        {job && (job.state === 'queued' || job.state === 'processing') && (
+          <div className="px-6 py-3 bg-primary/5 border-b border-primary/20 flex items-center gap-3 flex-shrink-0">
+            <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" strokeWidth={2} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium truncate">Processing "{job.filename}"</span>
+                {job.percent !== undefined && (
+                  <span className="font-mono text-xs text-muted-foreground flex-shrink-0">{Math.round(job.percent)}%</span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">{job.message}</div>
+              {job.percent !== undefined && (
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.max(0, job.percent))}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {job && job.state === 'error' && (
+          <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-start gap-3 flex-shrink-0">
+            <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-red-700">Failed to process "{job.filename}"</div>
+              <div className="text-xs text-red-600 mt-0.5 break-words">{job.error || job.message}</div>
+            </div>
+            <button onClick={dismissJob} className="text-red-600 hover:text-red-800 text-xs font-medium flex-shrink-0">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {uploadError && (
+          <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-start gap-3 flex-shrink-0">
+            <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
+            <div className="min-w-0 flex-1 text-sm text-red-600">{uploadError}</div>
+            <button onClick={dismissError} className="text-red-600 hover:text-red-800 text-xs font-medium flex-shrink-0">
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <main className="flex-1 overflow-y-auto">
           {activeView === 'dashboard' && (
             <Dashboard
+              job={job}
+              onUploadFile={uploadFile}
               onVideoSelect={(videoId) => {
                 setSelectedVideo(videoId)
                 setActiveView('analysis')

@@ -1,105 +1,190 @@
 {
-  "video_id": "1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv",
-  "video_path": "E:\\projects\\drishti ai\\uploads\\1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv",
+  "video_id": "1787380485852_04_CCTV_Candidate_Talking.mkv",
+  "video_path": "E:\\projects\\drishti ai\\uploads\\1787380485852_04_CCTV_Candidate_Talking.mkv",
   "metadata": {
-    "resolution": "1280x720",
-    "fps": 25,
+    "resolution": "640x480",
+    "fps": 8,
     "sampling": "5 fps",
-    "frames": 2210,
+    "frames": 1145,
     "processingTime": "N/A"
   },
   "quality_metrics": {
-    "observability": 0.5508,
-    "cameraShake": 0.113,
+    "observability": 0.7336,
+    "cameraShake": 0.0058249999999999994,
     "blur": 0,
     "lighting": 0,
     "occlusion": 0
   },
-  "event_count": 2,
+  "event_count": 4,
   "events": [
     {
       "id": "event-1",
-      "videoId": "1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv",
+      "videoId": "1787380485852_04_CCTV_Candidate_Talking.mkv",
       "start": 0,
-      "end": 32.8,
-      "duration": 32.8,
-      "motionScore": 0.5768,
-      "cameraShake": 0.226,
+      "end": 54.5,
+      "duration": 54.5,
+      "motionScore": 0.6618,
+      "cameraShake": 0.0202,
       "priority": "medium",
       "type": "proximity",
-      "description": "Multiple persons detected in proximity (3 tracks)",
-      "trackId": "Track-01",
+      "description": "Multiple persons detected in proximity (5 tracks)",
+      "trackId": "Track-04",
       "roi": [
         0,
         0,
-        1184,
-        720
+        523,
+        480
       ],
       "clipUrl": "",
       "annotatedClipUrl": "",
       "detection": {
-        "confidence": 0.2605,
+        "confidence": 0.2638,
         "object": "person"
       },
-      "observability": 0.5215,
+      "observability": 0.6042,
       "qualityFactors": {
         "observability": 0,
-        "cameraShake": 0.226,
+        "cameraShake": 0.0202,
         "blur": 0,
-        "lighting": 0.47850000000000004,
+        "lighting": 0.39580000000000004,
         "occlusion": 0
       },
       "evidence": [
-        "Motion score: 0.58 (peak), 0.26 (mean)",
-        "Observability: 0.52",
-        "Frames analyzed: 146",
-        "Person tracks detected: 3",
-        "Sudden onset detected (jerk saliency: 0.76) \u00e2\u20ac\u201d abrupt, non-periodic motion rather than gradual movement"
+        "Motion score: 0.66 (peak), 0.26 (mean)",
+        "Observability: 0.60",
+        "Frames analyzed: 198",
+        "Person tracks detected: 5",
+        "Sudden onset detected (jerk saliency: 1.00) — abrupt, non-periodic motion rather than gradual movement"
       ],
       "status": "unreviewed",
       "motionCharacter": "sudden",
-      "jerkScore": 0.7582
+      "jerkScore": 1
     },
     {
       "id": "event-2",
-      "videoId": "1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv",
-      "start": 71.6,
-      "end": 77.4,
-      "duration": 5.800000000000011,
-      "motionScore": 0.2913,
+      "videoId": "1787380485852_04_CCTV_Candidate_Talking.mkv",
+      "start": 53.75,
+      "end": 54.5,
+      "duration": 0.75,
+      "motionScore": 0.3257,
       "cameraShake": 0,
       "priority": "low",
       "type": "unusual_motion",
-      "description": "Motion detected (score: 0.29, observability: 0.58)",
+      "description": "Motion detected (score: 0.33, observability: 0.86)",
       "trackId": "N/A",
       "roi": [
         0,
-        46,
-        901,
-        720
+        25,
+        445,
+        480
       ],
       "clipUrl": "",
       "annotatedClipUrl": "",
       "detection": {
-        "confidence": 0.2009,
+        "confidence": 0.1994,
         "object": "person"
       },
-      "observability": 0.5801,
+      "observability": 0.86,
       "qualityFactors": {
         "observability": 0,
         "cameraShake": 0,
         "blur": 0,
-        "lighting": 0.41990000000000005,
+        "lighting": 0.14,
         "occlusion": 0
       },
       "evidence": [
-        "Motion score: 0.29 (peak), 0.20 (mean)",
-        "Observability: 0.58",
-        "Frames analyzed: 15"
+        "Motion score: 0.33 (peak), 0.20 (mean)",
+        "Observability: 0.86",
+        "Frames analyzed: 4"
       ],
       "status": "unreviewed",
       "motionCharacter": "gradual",
-      "jerkScore": 0.2077
+      "jerkScore": 0.3245
+    },
+    {
+      "id": "event-3",
+      "videoId": "1787380485852_04_CCTV_Candidate_Talking.mkv",
+      "start": 58,
+      "end": 59.25,
+      "duration": 1.25,
+      "motionScore": 0.3569,
+      "cameraShake": 0,
+      "priority": "low",
+      "type": "unusual_motion",
+      "description": "Motion detected (score: 0.36, observability: 0.84)",
+      "trackId": "N/A",
+      "roi": [
+        0,
+        42,
+        477,
+        480
+      ],
+      "clipUrl": "",
+      "annotatedClipUrl": "",
+      "detection": {
+        "confidence": 0.2248,
+        "object": "person"
+      },
+      "observability": 0.8388,
+      "qualityFactors": {
+        "observability": 0,
+        "cameraShake": 0,
+        "blur": 0,
+        "lighting": 0.1612,
+        "occlusion": 0
+      },
+      "evidence": [
+        "Motion score: 0.36 (peak), 0.22 (mean)",
+        "Observability: 0.84",
+        "Frames analyzed: 6",
+        "Sudden onset detected (jerk saliency: 0.74) — abrupt, non-periodic motion rather than gradual movement"
+      ],
+      "status": "unreviewed",
+      "motionCharacter": "sudden",
+      "jerkScore": 0.743
+    },
+    {
+      "id": "event-4",
+      "videoId": "1787380485852_04_CCTV_Candidate_Talking.mkv",
+      "start": 60,
+      "end": 143,
+      "duration": 83,
+      "motionScore": 0.5656,
+      "cameraShake": 0.0031,
+      "priority": "medium",
+      "type": "proximity",
+      "description": "Multiple persons detected in proximity (15 tracks)",
+      "trackId": "Track-06",
+      "roi": [
+        0,
+        0,
+        529,
+        480
+      ],
+      "clipUrl": "",
+      "annotatedClipUrl": "",
+      "detection": {
+        "confidence": 0.2439,
+        "object": "person"
+      },
+      "observability": 0.6314,
+      "qualityFactors": {
+        "observability": 0,
+        "cameraShake": 0.0031,
+        "blur": 0,
+        "lighting": 0.36860000000000004,
+        "occlusion": 0
+      },
+      "evidence": [
+        "Motion score: 0.57 (peak), 0.24 (mean)",
+        "Observability: 0.63",
+        "Frames analyzed: 319",
+        "Person tracks detected: 15",
+        "Sudden onset detected (jerk saliency: 0.78) — abrupt, non-periodic motion rather than gradual movement"
+      ],
+      "status": "unreviewed",
+      "motionCharacter": "sudden",
+      "jerkScore": 0.7806
     }
   ],
   "processing_info": {
@@ -108,8 +193,8 @@
       "1-7 (Python)",
       "8-9 (Golang)"
     ],
-    "timestamp": "1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv"
+    "timestamp": "1787380485852_04_CCTV_Candidate_Talking.mkv"
   },
-  "pipeline_dir": "1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa",
-  "source_video_path": "uploads/1787378360744_Seat_No_12_was_seen_taking_a_piece_of_pa.mkv"
+  "pipeline_dir": "1787380485852_04_CCTV_Candidate_Talking",
+  "source_video_path": "uploads/1787380485852_04_CCTV_Candidate_Talking.mkv"
 }
