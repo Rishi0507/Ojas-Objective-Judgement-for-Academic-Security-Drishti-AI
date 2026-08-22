@@ -169,6 +169,113 @@ async function generatePlaybackProxy(videoPath: string, outDir: string): Promise
   return outPath
 }
 
+/**
+ * Cuts a short, self-contained clip per event out of the playback proxy, plus
+ * (where the Go backend produced annotated frames) a second clip with the
+ * detection boxes burned in.
+ *
+ * Without this, the UI could only play the *whole* video and seek — which is
+ * why event playback looked like unrelated footage: an investigator needs the
+ * few seconds where the offence happens, not a 5-minute recording to scrub.
+ *
+ * Both are written under <outDir>/clips and referenced from the event's
+ * existing clipUrl / annotatedClipUrl fields (previously always empty).
+ */
+async function generateEventClips(
+  outDir: string,
+  enriched: any,
+  jobId: string
+): Promise<void> {
+  const events: any[] = enriched?.events ?? []
+  if (!events.length) return
+
+  const playbackPath = path.join(outDir, 'playback.mp4')
+  if (!fs.existsSync(playbackPath)) return
+
+  const clipsDir = path.join(outDir, 'clips')
+  fs.mkdirSync(clipsDir, { recursive: true })
+
+  const annotatedDir = path.join(outDir, 'backend_output', 'annotated')
+  const annotatedFrames = fs.existsSync(annotatedDir)
+    ? fs.readdirSync(annotatedDir)
+        .filter((f) => f.endsWith('.jpg'))
+        .map((f) => ({ file: f, idx: parseInt(f.match(/(\d+)\.jpg$/)?.[1] ?? '-1', 10) }))
+        .filter((f) => f.idx >= 0)
+        .sort((a, b) => a.idx - b.idx)
+    : []
+
+  // Annotated frames are named by SOURCE frame index, so converting an
+  // event's time window into frame numbers needs the video's real frame
+  // rate — not an assumed one.
+  const fps = Number(enriched?.metadata?.fps) || 0
+
+  for (const ev of events) {
+    const start = Number(ev.start) || 0
+    const duration = Math.max(0.5, (Number(ev.end) || 0) - start)
+    const safeId = String(ev.id ?? 'event').replace(/[^a-zA-Z0-9_-]/g, '_')
+
+    // ---- plain clip ----
+    const clipPath = path.join(clipsDir, `${safeId}.mp4`)
+    try {
+      await runCommand('ffmpeg', [
+        '-y',
+        '-ss', start.toFixed(3),
+        '-i', playbackPath,
+        '-t', duration.toFixed(3),
+        // Re-encode rather than stream-copy: copy can only cut on keyframes,
+        // which would drift the clip off the actual moment of the offence.
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-an', '-movflags', '+faststart',
+        clipPath,
+      ], ROOT)
+      ev.clipUrl = path.relative(ROOT, clipPath).split(path.sep).join('/')
+    } catch (err: any) {
+      console.error(`[clips] ${jobId} ${safeId} failed:`, err?.message ?? err)
+    }
+
+    // ---- annotated clip (detection boxes burned in) ----
+    if (annotatedFrames.length && fps > 0) {
+      const inWindow = annotatedFrames.filter((f) => {
+        const t = f.idx / fps
+        return t >= start && t <= start + duration
+      })
+
+      if (inWindow.length >= 2) {
+        // Sampled frames are sparse and unevenly spaced, so drive ffmpeg
+        // with a concat list at a fixed display rate rather than pretending
+        // they're a contiguous numbered sequence.
+        const listPath = path.join(clipsDir, `${safeId}_frames.txt`)
+        const listBody = inWindow
+          .map((f) => `file '${path.join(annotatedDir, f.file).replace(/\\/g, '/')}'\nduration 0.2`)
+          .join('\n')
+        // concat demuxer ignores the final entry's duration unless the last
+        // file is repeated, otherwise the closing frame is dropped.
+        const lastFile = path.join(annotatedDir, inWindow[inWindow.length - 1].file).replace(/\\/g, '/')
+        fs.writeFileSync(listPath, `${listBody}\nfile '${lastFile}'\n`)
+
+        const annPath = path.join(clipsDir, `${safeId}_annotated.mp4`)
+        try {
+          await runCommand('ffmpeg', [
+            '-y', '-f', 'concat', '-safe', '0', '-i', listPath,
+            '-vsync', 'vfr',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            // yuv420p + even dimensions, or browsers refuse to decode it.
+            '-pix_fmt', 'yuv420p',
+            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            '-movflags', '+faststart',
+            annPath,
+          ], ROOT)
+          ev.annotatedClipUrl = path.relative(ROOT, annPath).split(path.sep).join('/')
+        } catch (err: any) {
+          console.error(`[clips] ${jobId} ${safeId} annotated failed:`, err?.message ?? err)
+        } finally {
+          try { fs.unlinkSync(listPath) } catch {}
+        }
+      }
+    }
+  }
+}
+
 // Serializes video processing to one job at a time. The pipeline is CPU-bound
 // (Python motion detection, Go+YOLO detection) — running two concurrently on
 // the same machine doesn't parallelize useful work, it just makes both slower
@@ -244,6 +351,9 @@ async function processUploadedVideo(jobId: string, videoPath: string, filename: 
     // browser can decode (see generatePlaybackProxy).
     enriched.pipeline_dir = jobId
     enriched.source_video_path = path.relative(ROOT, proxyPath ?? videoPath).split(path.sep).join('/')
+
+    writeStatus(jobId, { message: 'Extracting event clips...', percent: 99 })
+    await generateEventClips(outDir, enriched, jobId)
 
     fs.writeFileSync(path.join(ROOT, 'public', 'api', 'events.json'), JSON.stringify(enriched, null, 2))
     fs.writeFileSync(path.join(outDir, 'api_response.json'), JSON.stringify(enriched, null, 2))
