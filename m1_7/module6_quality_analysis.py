@@ -79,6 +79,7 @@ class CameraQualityAnalyzer:
         flow_min_absolute: float = 0.5,
         shake_flag_threshold: float = 2.0,
         fallback_shake_q_discount: float = 0.3,
+        shake_stride: int = 3,
         # Q_observability fixed-scale defaults (used as initial scale;
         # retroactive percentile normalization overrides per-video).
         shake_max: float = 20.0,
@@ -118,6 +119,36 @@ class CameraQualityAnalyzer:
         self.flow_min_absolute = flow_min_absolute
         self.shake_flag_threshold = shake_flag_threshold
         self.fallback_shake_q_discount = fallback_shake_q_discount
+
+        # Compute the ORB shake estimate only every Nth sampled frame.
+        #
+        # Measured on this footage: ORB + RANSAC is 89.6% of this module's
+        # per-frame cost, and this module is ~28% of the whole pipeline - so
+        # the shake estimate alone is roughly a quarter of total runtime.
+        # Blur and brightness, by contrast, are 9% combined and stay per-frame.
+        #
+        # Default 3, chosen by measuring rather than by taste. On the exam
+        # footage, against stride 1:
+        #
+        #   stride 3  - events, camera-motion flags and peak scores unchanged
+        #               (50.40-84.60 peak 0.597 vs 0.594); module wall time
+        #               9.2s -> 5.0s
+        #   stride 5  - first event starts 7.6s late (50.40 -> 58.00) and its
+        #               peak drops 0.597 -> 0.504
+        #   stride 10 - second event starts 3.4s late, peak falls 31%
+        #
+        # Past 3 the speed curve is flat (5.0s at 3, 5 and 10) while accuracy
+        # keeps degrading, so there is nothing to buy by going higher. The
+        # camera-motion flags Module 7 consumes were byte-identical at every
+        # stride tested; what degrades first is q_observability, which shifts
+        # S_final and therefore where events begin.
+        #
+        # Not free in principle: a single sharp knock landing on a skipped
+        # frame is missed. On a bolted-down CCTV camera that is a rare event,
+        # and --shake-stride 1 restores exact behaviour.
+        self.shake_stride = max(1, int(shake_stride))
+        self._frames_seen = 0
+        self._last_shake: Optional[tuple] = None
 
         # Previous frame state.
         self._prev_gray: Optional[np.ndarray] = None
@@ -191,7 +222,7 @@ class CameraQualityAnalyzer:
         # If the mask leaves too few keypoints, _estimate_camera_motion
         # will fall back to unmasked detection and report detect_mode accordingly.
         shake_magnitude, shake_inlier_ratio, shake_camera_motion, detect_mode = \
-            self._estimate_camera_motion(gray, bg_mask)
+            self._shake_for_frame(gray, bg_mask)
 
         # ---- Trust gating: only trust the shake signal when masked-mode ORB ----
         # produced it. In unmasked_fallback mode, ORB is by definition
@@ -387,6 +418,29 @@ class CameraQualityAnalyzer:
         return mask
 
     # ---------------- 6b: ORB + RANSAC ----------------
+
+    def _shake_for_frame(self, gray, bg_mask):
+        """
+        ORB shake for this frame, or the last computed value when striding.
+
+        prev_gray is advanced on skipped frames too. Without that, the next
+        real estimate would compare frames `stride` apart and report the
+        accumulated drift as a single frame's shake - inflating the magnitude
+        by roughly the stride and corrupting the percentile normalisation that
+        Q_observability depends on. Advancing it keeps every ORB comparison
+        between adjacent sampled frames; the signal is sampled less often, not
+        measured over longer intervals.
+        """
+        due = (self._frames_seen % self.shake_stride == 0) or self._last_shake is None
+        self._frames_seen += 1
+
+        if due:
+            self._last_shake = self._estimate_camera_motion(gray, bg_mask)
+            return self._last_shake
+
+        # Skipped: keep the frame pairing intact for the next real estimate.
+        self._prev_gray = gray
+        return self._last_shake
 
     def _estimate_camera_motion(
         self,
@@ -707,6 +761,7 @@ def run_on_dirs(
     flow_min_absolute: float = 0.5,
     shake_flag_threshold: float = 2.0,
     fallback_shake_q_discount: float = 0.3,
+    shake_stride: int = 3,
     shake_max: float = 20.0,
     blur_min: float = 50.0,
     brightness_max: float = 40.0,
@@ -766,6 +821,7 @@ def run_on_dirs(
         flow_min_absolute=flow_min_absolute,
         shake_flag_threshold=shake_flag_threshold,
         fallback_shake_q_discount=fallback_shake_q_discount,
+        shake_stride=shake_stride,
         shake_max=shake_max,
         blur_min=blur_min,
         brightness_max=brightness_max,
@@ -973,6 +1029,14 @@ def main():
                              "(default 0.3 = 30%% weight). 1.0 = no discount (re-introduces "
                              "inversion bug on texture-poor footage). 0.0 = fully ignore "
                              "fallback shake for Q (loses signal entirely).")
+    parser.add_argument("--shake-stride", type=int, default=3,
+                        help="Compute the ORB/RANSAC camera-shake estimate every Nth "
+                             "sampled frame, holding the last value in between. ORB is "
+                             "~90%% of this module's cost and ~25%% of the whole pipeline, "
+                             "so raising this is the cheapest speed win available. "
+                             "Default 3: measured to leave events and camera-motion "
+                             "flags unchanged while halving this module's runtime. "
+                             "5 and above start truncating events. 1 = every frame.")
     parser.add_argument("--shake-max", type=float, default=20.0,
                         help="Max shake for fixed-scale penalty (default 20.0 px).")
     parser.add_argument("--blur-min", type=float, default=50.0,
@@ -999,6 +1063,7 @@ def main():
         flow_min_absolute=args.flow_min_absolute,
         shake_flag_threshold=args.shake_flag_threshold,
         fallback_shake_q_discount=args.fallback_shake_q_discount,
+        shake_stride=args.shake_stride,
         shake_max=args.shake_max,
         blur_min=args.blur_min,
         brightness_max=args.brightness_max,
