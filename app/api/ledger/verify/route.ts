@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import fs from 'fs'
+import path from 'path'
 import { verifyChain } from '@/lib/ledger/chain'
 import { readChain } from '@/lib/ledger/store'
 import { activeAnchor, buildBatch } from '@/lib/ledger/anchor'
@@ -23,14 +25,51 @@ export async function GET(request: NextRequest) {
 
     const chain = await readChain()
     const result = verifyChain(chain)
+
+    // A split chain is the one failure this endpoint could otherwise miss.
+    //
+    // appendEntry falls back to the local JSONL whenever the Postgres write
+    // fails - which is right for a transient outage, but a schema rejection is
+    // not transient, and the fallback then quietly builds a SECOND chain that
+    // verify never reads. Both halves verify perfectly on their own while the
+    // record as a whole has a hole in it, which is precisely the state an
+    // audit trail must not report as healthy.
+    const localPath = path.join(process.cwd(), 'pipeline_out', 'ledger.jsonl')
+    let orphanedLocal = 0
+    try {
+      orphanedLocal = fs
+        .readFileSync(localPath, 'utf-8')
+        .split(String.fromCharCode(10))
+        .filter((l) => l.trim()).length
+    } catch {
+      // no local file - nothing to reconcile
+    }
+    // Only a conflict when Postgres is the source: with no database configured
+    // the local file IS the chain.
+    const usingPostgres = !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    const split = usingPostgres && orphanedLocal > 0
     const anchor = activeAnchor()
     const batch = buildBatch(chain)
 
     const scoped = jobId ? chain.filter((e) => e.jobId === jobId) : chain
 
     return NextResponse.json({
-      ok: result.ok,
-      summary: result.ok
+      ok: result.ok && !split,
+      split: split
+        ? {
+            detail:
+              `${orphanedLocal} entries exist in the local ledger file that are not in the database. ` +
+              'They were written by the fallback path after a database write failed, so the record ' +
+              'is currently in two pieces and neither half is complete on its own.',
+            localEntries: orphanedLocal,
+            databaseEntries: result.entriesChecked,
+            remedy:
+              'Apply any pending migrations, then reconcile: the local file is at pipeline_out/ledger.jsonl.',
+          }
+        : null,
+      summary: split
+        ? `Chain is SPLIT: ${result.entriesChecked} entries in the database, ${orphanedLocal} stranded in the local file.`
+        : result.ok
         ? `${result.entriesChecked} entries verify from genesis; nothing has been altered or removed.`
         : `${result.problems.length} problem(s) found across ${result.entriesChecked} entries.`,
 

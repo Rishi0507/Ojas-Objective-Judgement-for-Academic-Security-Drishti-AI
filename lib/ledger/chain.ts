@@ -24,6 +24,10 @@ export type LedgerKind =
   | 'verdict_recorded'
   /** An incident report was issued. Its own hash goes in the chain it describes. */
   | 'report_generated'
+  /** Intermediates discarded; findings and evidence stills kept. */
+  | 'media_pruned'
+  /** A job's media was removed. The record of it outlives the files. */
+  | 'media_deleted'
   | 'anchor_published'
 
 /** The assertion an actor signs. Chain position is deliberately absent. */

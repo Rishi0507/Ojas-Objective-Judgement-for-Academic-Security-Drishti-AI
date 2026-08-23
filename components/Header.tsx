@@ -43,9 +43,16 @@ export default function Header({ onNotificationClick }: HeaderProps) {
         against no release process at all.
       */}
       <div className="flex items-center gap-3">
-        <span className="font-condensed text-3xl font-bold tracking-tight text-carbon-black uppercase leading-none">
-          DRISHTI AI
-        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ojas-logo.png" alt="" className="w-11 h-11 object-contain" />
+        <div className="leading-none">
+          <div className="font-condensed text-3xl font-bold tracking-tight text-carbon-black uppercase">
+            OJAS
+          </div>
+          <div className="text-[10px] font-mono uppercase tracking-wide text-slate mt-0.5">
+            Objective Judgement for Academic Sincerity
+          </div>
+        </div>
       </div>
 
       {/* Right Controls: Notification Pill + Primary Black Button (8px Radius) */}

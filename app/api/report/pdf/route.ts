@@ -84,14 +84,14 @@ export async function POST(request: NextRequest) {
       headerTemplate: '<div></div>',
       footerTemplate:
         '<div style="width:100%;font-size:8px;color:#64748b;padding:0 12mm;display:flex;justify-content:space-between;">' +
-        '<span>DrishtiAI &mdash; exam integrity report</span>' +
+        '<span>OJAS &mdash; exam integrity report</span>' +
         '<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>',
     })
 
     return new Response(Buffer.from(pdf), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="drishti-report.pdf"',
+        'Content-Disposition': 'attachment; filename="ojas-report.pdf"',
       },
     })
   } catch (err: any) {

@@ -236,6 +236,37 @@ async function buildReport(jobId: string, embed: boolean) {
     awaitingReview: unreviewed,
     autoFiltered,
 
+    // Precision, and an explicit statement of what cannot be computed.
+    //
+    // Reviewer verdicts ARE the labels: a confirmed finding is a true positive
+    // and a dismissed one a false positive, so precision falls out of the
+    // review with no extra annotation. Recall does not - it needs every real
+    // offence in the footage marked by hand, including the ones the system
+    // never surfaced, and nothing in this pipeline can supply that.
+    //
+    // Accuracy is deliberately absent rather than merely unavailable. Almost
+    // no frame contains an offence, so a detector that flagged nothing would
+    // score above 99%; quoting it would be technically true and actively
+    // misleading.
+    evaluation: (() => {
+      const judged = confirmed.length + dismissed.length
+      return {
+        precision:
+          judged > 0 ? Math.round((confirmed.length / judged) * 1000) / 1000 : null,
+        truePositives: confirmed.length,
+        falsePositives: dismissed.length,
+        judged,
+        basis:
+          judged > 0
+            ? `Precision over the ${judged} finding(s) a reviewer has ruled on. Not a model accuracy figure: it describes this footage and this reviewer.`
+            : 'No findings have been reviewed yet, so no precision figure can be given.',
+        recall:
+          'Not computed. Recall requires every genuine offence in the footage to be annotated by hand, including any this system failed to surface. No such labelled set exists for this video.',
+        accuracy:
+          'Deliberately not reported. Offences occupy a tiny fraction of frames, so an accuracy figure would exceed 99% for a detector that found nothing, and would mislead rather than inform.',
+      }
+    })(),
+
     integrity: {
       chainVerified: verification.ok,
       summary: verification.ok

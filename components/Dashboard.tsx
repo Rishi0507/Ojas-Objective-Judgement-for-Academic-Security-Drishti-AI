@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload } from 'lucide-react'
+import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload, Trash2, Archive } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { JobStatus } from '@/lib/useUploadJob'
 import { cn } from '@/lib/utils'
@@ -39,6 +39,9 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   const [verdicts, setVerdicts] = useState<Record<string, string>>({})
   const [library, setLibrary] = useState<any[]>([])
   const [switching, setSwitching] = useState<string | null>(null)
+  const [busyJob, setBusyJob] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -97,6 +100,36 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
       }
     } finally {
       setSwitching(null)
+    }
+  }
+
+  // Prune discards optical flow and motion masks - 79% of a job's disk on this
+  // footage - while leaving findings and evidence stills intact. Delete removes
+  // everything. Both are written to the custody ledger before the files go.
+  const removeMedia = async (jobId: string, mode: 'prune' | 'delete') => {
+    setBusyJob(jobId)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/videos/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, mode }),
+      })
+      const d = await res.json()
+      setNotice(
+        res.ok
+          ? `${mode === 'delete' ? 'Deleted' : 'Pruned'} - ${d.freedMb} MB freed, recorded as ledger entry ${d.ledgerSeq}.`
+          : d.error ?? 'Failed'
+      )
+      if (res.ok) {
+        loadLibrary()
+        if (d.clearedActiveVideo) loadVideoData()
+      }
+    } catch (e) {
+      setNotice(String(e))
+    } finally {
+      setBusyJob(null)
+      setConfirmDelete(null)
     }
   }
 
@@ -320,6 +353,12 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
             <p className="text-sm text-muted-foreground">Every video processed on this machine. Switching changes what the other tabs show.</p>
           </div>
         </div>
+        {notice && (
+          <div className="mb-4 p-3 rounded-lg border border-border bg-muted/40 text-sm text-foreground">
+            {notice}
+          </div>
+        )}
+
         {library.length > 0 ? (
           <div className="space-y-3">
             {library.map((v) => {
@@ -394,6 +433,43 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                           className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition-colors"
                         >
                           Analyse
+                        </button>
+                      )}
+
+                      {done && (
+                        <button
+                          onClick={() => removeMedia(v.jobId, 'prune')}
+                          disabled={busyJob === v.jobId}
+                          title="Discard optical flow and motion masks. Findings and evidence stills are kept."
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                        >
+                          <Archive className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                      )}
+
+                      {confirmDelete === v.jobId ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => removeMedia(v.jobId, 'delete')}
+                            disabled={busyJob === v.jobId}
+                            className="px-2.5 py-1.5 bg-red-600 text-white rounded-md text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {busyJob === v.jobId ? 'Deleting…' : 'Confirm'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="px-2.5 py-1.5 border border-border rounded-md text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(v.jobId)}
+                          title="Delete this video and all its evidence. Recorded in the custody ledger."
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" strokeWidth={2} />
                         </button>
                       )}
                     </div>
