@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, Shield, Zap, Target, LogOut, Loader2, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/useAuth'
+import FluidFlowGrid from '@/components/ui/fluid-flow-grid'
 
 /** Google's mark, inlined so the button works offline and needs no CDN. */
 function GoogleIcon({ className }: { className?: string }) {
@@ -90,8 +91,9 @@ export default function Hero({ onLaunch }: HeroProps) {
   const canEnter = !!user || !configured
 
   return (
-    <div className="min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20">
-      <div className="max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
+    <div className="relative min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20 overflow-hidden">
+      <FluidFlowGrid />
+      <div className="relative z-10 max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
         
         {/*
           Page header. The brand and the account control sit on one row across
