@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Play, Pause, CheckCircle, AlertTriangle, Eye, EyeOff, CheckSquare, XCircle, AlertCircle, Copy, Flag, Zap, Camera, Gauge, Link2, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PageSkeleton } from './Skeleton'
 
 function getGroundedExplanation(type: string, label: string, trackId?: string, confidence?: number) {
   const person = trackId || 'Examinee'
@@ -455,11 +456,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   }
 
   if (!eventData) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading event details...</div>
-      </div>
-    )
+    return <PageSkeleton variant="detail" label="Loading segment details" />
   }
 
   const priorityColor = eventData.priority === 'high' ? 'red' : eventData.priority === 'medium' ? 'yellow' : 'blue'
@@ -473,7 +470,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
           </button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Segment <span className="font-serif italic">Details</span>
+              Segment <span className="font-normal text-muted-foreground">Details</span>
             </h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span className="font-mono">{eventData.id}</span>

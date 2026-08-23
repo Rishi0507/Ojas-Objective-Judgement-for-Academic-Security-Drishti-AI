@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Activity, Phone, Users, TrendingUp, Filter, Download, Eye, Clock, Zap, Target, Network } from 'lucide-react'
+import { ChevronRight, ArrowLeft, Activity, Phone, Users, TrendingUp, Filter, Download, Eye, Clock, Zap, Target, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PageSkeleton } from './Skeleton'
 
 /**
  * Feature 10.1 — investigator profiles. Labels/blurbs live here rather than
@@ -70,6 +71,20 @@ interface VideoData {
   events: EventData[]
 }
 
+/**
+ * Observability colour bands.
+ *
+ * Thresholds match the uncertainty bands used elsewhere (>0.6 good,
+ * 0.3-0.6 middling, <0.3 poor) so the same number never reads as reassuring in
+ * one panel and alarming in another. Amber rather than yellow, and emerald
+ * rather than lime: both hold contrast against the light canvas.
+ */
+function observabilityTone(v: number) {
+  if (v >= 0.6) return { bar: 'bg-emerald-500', text: 'text-emerald-700' }
+  if (v >= 0.3) return { bar: 'bg-amber-500', text: 'text-amber-700' }
+  return { bar: 'bg-red-500', text: 'text-red-700' }
+}
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = (seconds % 60).toFixed(1)
@@ -134,11 +149,7 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
   }, [profile])
 
   if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading video analysis...</div>
-      </div>
-    )
+    <PageSkeleton variant="analysis" label="Loading video analysis" />
   }
 
   if (!videoData) {
@@ -170,6 +181,8 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
     { id: 'proximity', label: 'Proximity', count: proximityCount, icon: Users },
     { id: 'unusual', label: 'Unusual Motion', count: unusualCount, icon: TrendingUp },
   ]
+
+  const obsTone = observabilityTone(videoData.quality_metrics.observability)
 
   const videoDuration = videoData.events.length > 0 
     ? videoData.events[videoData.events.length - 1].end 
@@ -299,10 +312,23 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground">Observability</span>
-                  <span className="font-mono font-bold text-green-600">{videoData.quality_metrics.observability.toFixed(2)}</span>
+                  <span className={cn('font-mono font-bold tabular-nums', obsTone.text)}>
+                    {videoData.quality_metrics.observability.toFixed(2)}
+                  </span>
                 </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-green-600 rounded-full" style={{ width: `${videoData.quality_metrics.observability * 100}%` }} />
+                {/* Colour tracks the value rather than being fixed green: a bar
+                    that is green at 0.31 tells a reviewer the footage is
+                    trustworthy when it is not. Track darkened from bg-muted so
+                    the fill is legible on the warm canvas at any width. */}
+                <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={cn('h-full rounded-full transition-[width] duration-700 ease-out', obsTone.bar)}
+                    style={{ width: `${Math.max(2, videoData.quality_metrics.observability * 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground mt-1 font-mono">
+                  <span>0.0 unusable</span>
+                  <span>1.0 clear</span>
                 </div>
               </div>
               <div className="pt-4 space-y-2 border-t border-border">
@@ -423,63 +449,115 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
             </span>
           )}
         </h2>
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filteredEvents.map((event) => (
             <button
               key={event.id}
               onClick={() => onEventSelect(event.id)}
-              className="w-full p-4 card card-hover text-left"
+              className="group relative w-full pl-5 pr-4 py-4 rounded-xl border border-border bg-card text-left transition-all hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="font-mono font-bold">{event.id}</span>
-                    <span className={cn(
-                      "px-2 py-0.5 rounded text-xs font-bold",
-                      event.priority === 'high' 
-                        ? 'bg-red-50 text-red-700 border border-red-200' 
-                        : event.priority === 'medium'
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200'
-                    )}>
-                      {event.priority.toUpperCase()}
+              {/* Priority as a spine rather than only a pill: scanning a long
+                  list, colour down the edge is readable at a glance where a
+                  badge among six other badges is not. */}
+              <span
+                className={cn(
+                  'absolute left-0 top-3 bottom-3 w-1 rounded-full',
+                  event.priority === 'high'
+                    ? 'bg-red-500'
+                    : event.priority === 'medium'
+                      ? 'bg-amber-500'
+                      : 'bg-slate-300'
+                )}
+              />
+
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                    <span className="font-mono font-semibold text-sm">{event.id}</span>
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wide',
+                        event.priority === 'high'
+                          ? 'bg-red-50 text-red-700'
+                          : event.priority === 'medium'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-slate-100 text-slate-600'
+                      )}
+                    >
+                      {event.priority}
                     </span>
-                    <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{event.trackId}</span>
-                    {event.profileScore !== undefined && (
-                      <span
-                        className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary border border-primary/30 rounded text-xs font-bold font-mono"
-                        title={
-                          event.profileSignals
-                            ? Object.entries(event.profileSignals)
-                                .map(([k, v]) => `${k}: ${Number(v).toFixed(2)}`)
-                                .join(String.fromCharCode(10))
-                            : undefined
-                        }
-                      >
-                        <Target className="w-3 h-3" strokeWidth={2.5} />
-                        {event.profileScore.toFixed(2)}
-                      </span>
-                    )}
+                    <span className="px-2 py-0.5 bg-muted rounded-md text-[11px] font-mono text-muted-foreground">
+                      {event.trackId}
+                    </span>
                     {event.motionCharacter === 'sudden' && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-xs font-bold">
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 rounded-md text-[11px] font-semibold">
                         <Zap className="w-3 h-3" strokeWidth={2.5} />
-                        SUDDEN
+                        Sudden
                       </span>
                     )}
                   </div>
-                  <div className="font-medium mb-2">{event.description}</div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground font-mono">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      {formatTime(event.start)} - {formatTime(event.end)}
+
+                  <div className="font-medium mb-2 truncate">{event.description}</div>
+
+                  {/* Metrics labelled, and the motion value carries a small
+                      inline bar - a bare "0.44" gives no sense of scale. */}
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span className="font-mono tabular-nums text-foreground">
+                        {formatTime(event.start)}–{formatTime(event.end)}
+                      </span>
                     </span>
-                    <span>Duration: {event.duration.toFixed(1)}s</span>
-                    <span>Motion: {event.motionScore.toFixed(2)}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-mono tabular-nums text-foreground">
+                        {event.duration.toFixed(1)}s
+                      </span>
+                      long
+                    </span>
+                    <span className="flex items-center gap-2">
+                      motion
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-14 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <span
+                            className="block h-full bg-slate-500 rounded-full"
+                            style={{ width: `${Math.min(100, event.motionScore * 100)}%` }}
+                          />
+                        </span>
+                        <span className="font-mono tabular-nums text-foreground">
+                          {event.motionScore.toFixed(2)}
+                        </span>
+                      </span>
+                    </span>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
+                  {event.profileScore !== undefined && (
+                    <span
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-bold font-mono tabular-nums"
+                      title={
+                        event.profileSignals
+                          ? Object.entries(event.profileSignals)
+                              .map(([k, v]) => `${k}: ${Number(v).toFixed(2)}`)
+                              .join(String.fromCharCode(10))
+                          : undefined
+                      }
+                    >
+                      <Target className="w-3 h-3" strokeWidth={2.5} />
+                      {event.profileScore.toFixed(2)}
+                    </span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
                 </div>
               </div>
             </button>
           ))}
+
+          {filteredEvents.length === 0 && (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No segments match this filter.
+            </div>
+          )}
         </div>
       </div>
     </div>
