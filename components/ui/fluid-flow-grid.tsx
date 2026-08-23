@@ -1,24 +1,15 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 export default function FluidFlowGrid() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
-
-    useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        setIsDarkMode(mediaQuery.matches);
-        const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
-        mediaQuery.addEventListener('change', handler);
-        return () => mediaQuery.removeEventListener('change', handler);
-    }, []);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const ctx = canvas.getContext('2d', { alpha: false });
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) return;
 
         let animationFrameId: number;
@@ -58,33 +49,24 @@ export default function FluidFlowGrid() {
         const render = () => {
             time += 0.008;
 
-            // Mouse smooth interpolation
             mouse.x += (mouse.targetX - mouse.x) * 0.08;
             mouse.y += (mouse.targetY - mouse.y) * 0.08;
 
-            // Tailored for warm-canvas & dark contrast in Drishti AI theme
-            const bgColor = isDarkMode ? '#080d1a' : '#f0f7ff';
-            const lineBaseColor = isDarkMode ? '59, 130, 246' : '30, 64, 175'; // Neutral Slate-Blue
-            const accentBlue = isDarkMode ? '147, 197, 253' : '29, 78, 216';
+            ctx.clearRect(0, 0, width, height);
 
-            ctx.fillStyle = bgColor;
-            ctx.fillRect(0, 0, width, height);
-
-            const spacing = 35;
+            const spacing = 32;
             const cols = Math.ceil(width / spacing) + 1;
             const rows = Math.ceil(height / spacing) + 1;
 
-            ctx.lineWidth = 1.2;
+            ctx.lineWidth = 1.3;
 
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
                     const x = i * spacing;
                     const y = j * spacing;
 
-                    // Trigonometric fluid turbulence angle
                     let angle = Math.sin(x * 0.003 + time) + Math.cos(y * 0.003 + time);
 
-                    // Distance to mouse force field
                     const dx = mouse.x - x;
                     const dy = mouse.y - y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -102,13 +84,12 @@ export default function FluidFlowGrid() {
                     const y2 = y + Math.sin(angle) * lineLen;
 
                     const alpha = isNear
-                        ? 0.8
-                        : (0.15 + Math.sin(x * 0.01 + y * 0.01 + time) * 0.1);
+                        ? 0.75
+                        : (0.14 + Math.sin(x * 0.01 + y * 0.01 + time) * 0.08);
 
-                    ctx.strokeStyle = isNear
-                        ? `rgba(${accentBlue}, ${alpha})`
-                        : `rgba(${lineBaseColor}, ${alpha})`;
+                    const color = isNear ? `rgba(37, 99, 235, ${alpha})` : `rgba(71, 85, 105, ${alpha})`;
 
+                    ctx.strokeStyle = color;
                     ctx.beginPath();
                     ctx.moveTo(x, y);
                     ctx.lineTo(x2, y2);
@@ -127,10 +108,10 @@ export default function FluidFlowGrid() {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseleave', handleMouseLeave);
         };
-    }, [isDarkMode]);
+    }, []);
 
     return (
-        <div className="absolute inset-0 w-full h-full overflow-hidden select-none pointer-events-none opacity-40">
+        <div className="absolute inset-0 w-full h-full overflow-hidden select-none pointer-events-none z-0">
             <canvas ref={canvasRef} className="absolute inset-0 block" />
         </div>
     );

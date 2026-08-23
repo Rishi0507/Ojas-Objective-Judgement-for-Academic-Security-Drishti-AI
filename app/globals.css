@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scroll-behavior: smooth;
+}
+
 /*
  * AI for Business — Style Reference
  * Brutalist editorial showroom on warm gray. Warm Canvas (#e5e5e5) page background,

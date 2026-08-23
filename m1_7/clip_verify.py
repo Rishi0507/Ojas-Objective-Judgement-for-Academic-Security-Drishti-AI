@@ -217,6 +217,11 @@ def main():
     ap = argparse.ArgumentParser(description="CLIP-verify detected offences.")
     ap.add_argument("--pipeline-dir", required=True)
     ap.add_argument("--min-pixels", type=int, default=MIN_CROP_PIXELS)
+    ap.add_argument("--max-crops", type=int, default=40,
+                    help="Stop after this many CLIP inferences. Bounds the worst case on a "
+                         "busy video without changing behaviour on a typical one; findings "
+                         "past the cap are marked unjudgeable rather than silently skipped, "
+                         "so the omission is visible in the report.")
     ap.add_argument("--filter", action="store_true",
                     help="Mark contradicted findings as suppressed so the UI hides them. "
                          "Only 'contradicted' is suppressed - 'unjudgeable' never is, "
@@ -235,6 +240,7 @@ def main():
 
     video_id = data.get("video_id", "")
     checked = supported = contradicted = skipped = suppressed = 0
+    capped = 0
 
     for event in data.get("events", []):
         for off in (event.get("offences") or []):
@@ -268,6 +274,18 @@ def main():
                 }
                 skipped += 1
                 print(f"  {otype:18s} {off.get('trackId','-'):9s} SKIP  subject {pixels}px")
+                continue
+
+            # Bound the work. Model load dominates a small job, but inference
+            # is linear in findings, so a busy video would otherwise run
+            # unboundedly long inside the queue.
+            if checked >= args.max_crops:
+                off["clip"] = {
+                    "verdict": "unjudgeable",
+                    "reason": f"verification cap reached ({args.max_crops} crops)",
+                }
+                skipped += 1
+                capped += 1
                 continue
 
             try:
@@ -336,6 +354,7 @@ def main():
         "contradicted": contradicted,
         "skipped_unjudgeable": skipped,
         "suppressed": suppressed,
+        "past_cap": capped,
         "written": str(enriched_path),
     }, indent=2))
 
