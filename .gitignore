@@ -130,3 +130,6 @@ next-env.d.ts
 # Per-job derived summary, recomputed from the job output if removed.
 .summary.json
 .dirsize.json
+
+# npm cache redirected here while C: was full; machine-local, never shared.
+/.npm-cache/

@@ -203,3 +203,60 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   border: none;
 }
+
+/* ---------------------------------------------------------------------------
+   View and banner transitions.
+
+   Defined here rather than pulled in via tailwindcss-animate: three keyframes
+   do not justify a dependency, and keeping them local means the durations can
+   be tuned against what the app actually does (a 1.5s status poll, a fetch that
+   usually resolves inside 300ms).
+
+   All of it is disabled under prefers-reduced-motion. Sliding panels are a
+   nicety; for anyone who gets motion sick from them they are not.
+--------------------------------------------------------------------------- */
+
+@keyframes drishti-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes drishti-slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes drishti-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+/* Applied to each view as it mounts, so switching tabs reads as the new screen
+   arriving rather than the old one being replaced between frames. */
+.view-enter {
+  animation: drishti-fade-up 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.banner-enter {
+  animation: drishti-slide-down 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* For the stretch before the pipeline reports a real percentage: a bar that
+   sits at 0% looks stalled, an indeterminate sweep looks busy. */
+.progress-indeterminate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: 0.35;
+  animation: drishti-indeterminate 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-enter,
+  .banner-enter,
+  .progress-indeterminate::after {
+    animation: none;
+  }
+}
