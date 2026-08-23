@@ -126,3 +126,7 @@ next-env.d.ts
 # Local MCP server config. Holds a live n8n bearer token - machine-specific
 # credentials, never shared.
 /.agents/mcp_config.json
+
+# Per-job derived summary, recomputed from the job output if removed.
+.summary.json
+.dirsize.json
