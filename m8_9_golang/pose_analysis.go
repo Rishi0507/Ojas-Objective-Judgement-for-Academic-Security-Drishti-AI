@@ -1,7 +1,8 @@
-package main
+﻿package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sort"
 )
@@ -9,7 +10,7 @@ import (
 // Micro-motion offence detection from body keypoints.
 //
 // Bounding boxes can say where a person is, never which way they are facing
-// or where their hands are — so head turns, signalling and reaching toward a
+// or where their hands are â€” so head turns, signalling and reaching toward a
 // neighbour are invisible to box-only detection. These are derived from the
 // 17 COCO joints emitted per person by the pose model.
 //
@@ -30,7 +31,7 @@ const (
 	minKeypointConf = 0.50
 
 	// How far the head must swing from this person's own resting yaw to count
-	// as a turn. A still person's yaw was measured holding to ±0.03 over eight
+	// as a turn. A still person's yaw was measured holding to Â±0.03 over eight
 	// consecutive frames, so this sits an order of magnitude above measurement
 	// noise while remaining reachable: someone facing forward who looks to a
 	// neighbour moves roughly 0.5-0.7 on this scale.
@@ -102,7 +103,7 @@ func joint(p YOLOPose, name string) (YOLOKeypoint, bool) {
 }
 
 // headYaw estimates how far a head is turned away from square-on: 0 is facing
-// forward, ±1 is the nose fully over one shoulder. Sign gives direction —
+// forward, Â±1 is the nose fully over one shoulder. Sign gives direction â€”
 // negative toward image-left, positive toward image-right.
 //
 // Shoulders are the reference rather than the face itself, because they stay
@@ -112,7 +113,7 @@ func joint(p YOLOPose, name string) (YOLOKeypoint, bool) {
 // The measure is the *relative* difference in horizontal distance from the
 // nose to each shoulder, (dL-dR)/(dL+dR). An earlier version divided the nose
 // offset by shoulder width, which blows up as someone turns side-on and that
-// width collapses toward zero — on this footage it produced values up to 15.6
+// width collapses toward zero â€” on this footage it produced values up to 15.6
 // where a ratio should stay near 1, making any threshold meaningless. This
 // form is inherently bounded to [-1,1] and needs no scale normalisation,
 // since both distances shrink together with the person.
@@ -156,12 +157,12 @@ func medianFloat(v []float64) float64 {
 //
 // Measured against the person's own resting posture, not against zero. Yaw is
 // computed in image space, so a candidate seated at an angle to the camera has
-// a large constant offset with their head perfectly still — one such person
-// here held -0.65 ± 0.03 across eight consecutive frames and was reported as
+// a large constant offset with their head perfectly still â€” one such person
+// here held -0.65 Â± 0.03 across eight consecutive frames and was reported as
 // "sustained head turn" purely for sitting at an angle. Absolute yaw describes
 // head *orientation*; a turn is a *change*, so the baseline is subtracted.
 //
-// The low spread of that measurement (±0.03) is also why no minimum-size gate
+// The low spread of that measurement (Â±0.03) is also why no minimum-size gate
 // is applied: keypoints stayed precise on a person only ~21px across the
 // shoulders, so small subjects are not inherently untrustworthy here.
 func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
@@ -215,6 +216,13 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 		}
 
 		if consecutive >= headTurnMinFrames {
+			if moved, ok := locomotionDuring(poses, 0, 1<<30); ok && moved > headTurnMaxLocomotion {
+				log.Printf("[head_turn] %s @%.2fs dropped: subject travelled %.1f shoulder-widths during this event, so the turn measures locomotion",
+					track.TrackID, startTime, moved)
+				consecutive = 0
+				continue
+			}
+
 			direction := "left"
 			if yawSignAt(poses, startFrame) > baseline {
 				direction = "right"
@@ -237,6 +245,13 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 	// A turn still in progress when the event ends.
 	if consecutive >= headTurnMinFrames {
 		last := poses[len(poses)-1]
+
+		if moved, ok := locomotionDuring(poses, 0, 1<<30); ok && moved > headTurnMaxLocomotion {
+			log.Printf("[head_turn] %s @%.2fs dropped: subject travelled %.1f shoulder-widths during this event, so the turn measures locomotion",
+				track.TrackID, startTime, moved)
+			return offences
+		}
+
 		direction := "left"
 		if yawSignAt(poses, startFrame) > 0 {
 			direction = "right"
@@ -256,6 +271,99 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 	return offences
 }
 
+
+// ---------------------------------------------------------------------------
+// Locomotion gate for head turns
+// ---------------------------------------------------------------------------
+
+// headTurnMaxLocomotion is how far a subject may travel across an event,
+// measured in their own shoulder-widths, before their head turns stop counting
+// as evidence.
+//
+// A head turn is only informative for someone stationary: a candidate at a desk
+// should be facing their own work, so looking away is a departure from it. A
+// person walking through the hall turns their head as a function of walking,
+// and reporting that is measuring locomotion, not attention. Every flagged
+// subject in this footage was standing or mid-stride in the aisle; the seated
+// candidates were never flagged at all.
+//
+// Measured on the exam footage, whole-event travel per track:
+//
+//   Track-01  112 frames  7.89   (8 head turns)
+//   Track-28  106 frames  8.91   (1)
+//   Track-30   50 frames  5.65
+//   Track-06   54 frames  4.65   (3)
+//   Track-07   37 frames  4.34   (4)
+//   Track-02    5 frames  0.33
+//   Track-21    2 frames  0.04
+//
+// 2.0 sits well clear of every walker observed (lowest 4.34) and far above any
+// plausible shift by someone anchored to a chair - at ~21px shoulder width here
+// that is roughly 40px of travel.
+//
+// Two honest caveats. The threshold could NOT be calibrated against a
+// stationary population, because this footage contains none: the only
+// low-travel tracks were observed for 2-5 frames, too briefly to move rather
+// than genuinely still. And measuring across the whole event rather than the
+// turn window is deliberate - a turn lasts about a second, in which even a
+// walker covers barely one shoulder-width, so the window cannot separate the
+// two (measured: window values 0.02-3.81 with no useful split).
+var headTurnMaxLocomotion = 2.0
+
+// Legs cannot be used to tell sitting from standing here: ankles come back at
+// ~0.03 confidence because desks occlude them (see the note at the top of this
+// file). Displacement of the whole subject is the signal that survives at this
+// resolution, and it targets the actual failure more directly than posture
+// would - a person standing still at their own desk is fine; one crossing the
+// room is not making a meaningful head turn either way.
+//
+// Returns the span of the subject's box centre over the window, in shoulder
+// widths, and false when there is too little to measure.
+func locomotionDuring(poses []TrackedPose, startFrame, endFrame int) (float64, bool) {
+	var cx, cy, widths []float64
+
+	for _, tp := range poses {
+		if tp.FrameIdx < startFrame || tp.FrameIdx > endFrame {
+			continue
+		}
+		if len(tp.Pose.BBox) != 4 {
+			continue
+		}
+		cx = append(cx, float64(tp.Pose.BBox[0]+tp.Pose.BBox[2])/2)
+		cy = append(cy, float64(tp.Pose.BBox[1]+tp.Pose.BBox[3])/2)
+
+		lSho, okL := joint(tp.Pose, "left_shoulder")
+		rSho, okR := joint(tp.Pose, "right_shoulder")
+		if okL && okR {
+			widths = append(widths, math.Abs(lSho.X-rSho.X))
+		}
+	}
+
+	if len(cx) < 2 || len(widths) == 0 {
+		return 0, false
+	}
+
+	// Span rather than net displacement: someone who walks out of shot and
+	// back would net to zero, and normalising by their own shoulder width
+	// keeps this comparable between a subject at the front of the room and
+	// one at the back.
+	minX, maxX := cx[0], cx[0]
+	minY, maxY := cy[0], cy[0]
+	for i := range cx {
+		minX = math.Min(minX, cx[i])
+		maxX = math.Max(maxX, cx[i])
+		minY = math.Min(minY, cy[i])
+		maxY = math.Max(maxY, cy[i])
+	}
+	span := math.Hypot(maxX-minX, maxY-minY)
+
+	shoulder := medianFloat(widths)
+	if shoulder < 1 {
+		return 0, false
+	}
+	return span / shoulder, true
+}
+
 // yawSignAt reports which way the head was turned at a given frame.
 func yawSignAt(poses []TrackedPose, frameIdx int) float64 {
 	for _, tp := range poses {
@@ -268,7 +376,7 @@ func yawSignAt(poses []TrackedPose, frameIdx int) float64 {
 	return -1
 }
 
-// detectHandGestures reports a wrist lifted clearly above the shoulder line —
+// detectHandGestures reports a wrist lifted clearly above the shoulder line â€”
 // the signalling posture. Writing and page-turning keep hands low, so the
 // shoulder line separates the two well without needing gesture classification.
 func detectHandGestures(track PersonTrack, poses []TrackedPose) []Offence {
