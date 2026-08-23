@@ -10,6 +10,13 @@ export const metadata: Metadata = {
   title: 'OJAS — Objective Judgement for Academic Sincerity',
   description:
     'Offline analysis of exam hall CCTV. Surfaces motion segments and reviewable findings with the frame and bounding box each one came from, for an invigilator to confirm or dismiss.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/icon.png', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, Shield, Zap, Target, LogOut, Loader2, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/useAuth'
 
@@ -47,12 +47,43 @@ const useCases = [
   },
 ]
 
+
+/**
+ * Reveal for the three cards: left, then centre, then right.
+ *
+ * Defined as variants rather than per-card props so the stagger is owned by the
+ * container - the children only describe their own two states, and reordering
+ * or adding a card needs no timing changes.
+ *
+ * whileInView with once:true rather than animate, so the reveal happens when
+ * the row is actually reached instead of firing off-screen during page load.
+ */
+const cardGrid = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
+}
+
+const cardItem = {
+  hidden: { opacity: 0, y: 24 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    // Slightly overdamped: it settles rather than bouncing, which suits a
+    // page about evidence more than a springy one would.
+    transition: { type: 'spring', stiffness: 220, damping: 28, mass: 0.9 },
+  },
+}
+
 interface HeroProps {
   onLaunch?: () => void
 }
 
 export default function Hero({ onLaunch }: HeroProps) {
   const { user, loading, configured, error, signInWithGoogle, signOut } = useAuth()
+
+  // globals.css already disables its keyframes under prefers-reduced-motion;
+  // framer-motion needs asking separately or the two would disagree.
+  const reduceMotion = useReducedMotion()
 
   // With Supabase unconfigured the app stays usable rather than locking a
   // teammate out of their own project over a missing .env.local.
@@ -62,8 +93,43 @@ export default function Hero({ onLaunch }: HeroProps) {
     <div className="min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20">
       <div className="max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
         
+        {/*
+          Page header. The brand and the account control sit on one row across
+          the full width rather than stacked inside the left column, so the
+          signed-in identity reads as chrome instead of as part of the pitch.
+        */}
+        <header className="flex items-start justify-between gap-6">
+          <div className="flex items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ojas-logo.png" alt="OJAS" className="w-14 h-14 object-contain" />
+            <div>
+              <div className="font-condensed text-2xl font-bold uppercase tracking-tight leading-none text-carbon-black">
+                OJAS
+              </div>
+              <div className="text-xs text-slate mt-1">
+                Objective Judgement for Academic Sincerity
+              </div>
+            </div>
+          </div>
+
+          {user && (
+            <div className="inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border border-ash bg-paper-white/60 text-sm text-slate flex-shrink-0">
+              <span className="truncate max-w-[220px]">
+                <span className="font-medium text-carbon-black">{user.email}</span>
+              </span>
+              <button
+                onClick={signOut}
+                className="flex items-center gap-1 px-2 py-1 rounded-full text-xs text-slate hover:bg-mist-gray hover:text-carbon-black transition-colors flex-shrink-0"
+              >
+                <LogOut className="w-3 h-3" />
+                Sign out
+              </button>
+            </div>
+          )}
+        </header>
+
         {/* Hero Section Split: Oversized Condensed Headline + Live Media Frame */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end pt-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center !mt-8 lg:!mt-10">
           
           {/* Left Column: Massive 80px-130px Condensed Uppercase Headline */}
           <motion.div
@@ -74,29 +140,10 @@ export default function Hero({ onLaunch }: HeroProps) {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.08 }}
             className="lg:col-span-7 text-left space-y-6"
           >
-            <div className="flex items-center gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/ojas-logo.png" alt="OJAS" className="w-14 h-14 object-contain" />
-              <div>
-                <div className="font-condensed text-2xl font-bold uppercase tracking-tight leading-none text-carbon-black">
-                  OJAS
-                </div>
-                <div className="text-xs text-slate mt-1">
-                  Objective Judgement for Academic Sincerity
-                </div>
-              </div>
-              <span className="tag-mint ml-1 inline-flex items-center gap-2">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
-                </span>
-                offline video analysis
-              </span>
-            </div>
 
             {/* Massive 80px-130px Uppercase Condensed Headline at 0.9 Line-Height */}
-            <h1 className="font-condensed text-6xl md:text-8xl lg:text-[110px] font-bold text-carbon-black uppercase leading-[0.9] tracking-[-0.03em]">
-              SURVEILLANCE INTELLIGENCE FOR EXAMS
+            <h1 className="font-condensed text-5xl md:text-7xl lg:text-[88px] font-bold text-carbon-black uppercase leading-[0.92] tracking-[-0.03em]">
+              THE FOOTAGE NOBODY HAS TIME TO WATCH
             </h1>
 
             <p className="text-body font-normal text-slate max-w-lg leading-relaxed">
@@ -131,22 +178,6 @@ export default function Hero({ onLaunch }: HeroProps) {
 
               </div>
 
-              {user && (
-                <div className="inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border border-ash bg-paper-white/60 text-sm text-slate">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                  <span className="truncate max-w-[220px]">
-                    <span className="font-medium text-carbon-black">{user.email}</span>
-                  </span>
-                  <button
-                    onClick={signOut}
-                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs text-slate hover:bg-mist-gray hover:text-carbon-black transition-colors flex-shrink-0"
-                  >
-                    <LogOut className="w-3 h-3" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-
               {!configured && !loading && (
                 <div className="flex items-center gap-2 text-xs text-smoke font-mono">
                   <AlertCircle className="w-3.5 h-3.5" />
@@ -168,7 +199,10 @@ export default function Hero({ onLaunch }: HeroProps) {
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="lg:col-span-5"
+            // Nudged above the grid's centre line: the headline column is
+            // taller, so true centring parks the card noticeably below the
+            // headline's optical top edge.
+            className="lg:col-span-5 lg:-mt-24"
           >
             <div className="card bg-paper-white rounded-[32px] p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-mist-gray pb-3">
@@ -216,9 +250,10 @@ export default function Hero({ onLaunch }: HeroProps) {
 
         {/* Inverted Black Section Block (32px Radius) */}
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
           className="card-inverted bg-carbon-black rounded-[32px] p-10 space-y-6 text-left"
         >
           <div className="flex items-center justify-between">
@@ -226,7 +261,7 @@ export default function Hero({ onLaunch }: HeroProps) {
           </div>
 
           <h2 className="font-condensed text-4xl md:text-6xl font-bold text-paper-white uppercase leading-[0.9] tracking-tight">
-            THE SYSTEM FINDS MOMENTS WORTH LOOKING AT. A PERSON DECIDES WHAT THEY MEAN.
+            THE SYSTEM FINDS MOMENTS WORTH LOOKING AT &mdash; A PERSON DECIDES WHAT THEY MEAN
           </h2>
 
           <p className="text-body text-smoke max-w-2xl font-normal leading-relaxed">
@@ -235,11 +270,23 @@ export default function Hero({ onLaunch }: HeroProps) {
         </motion.div>
 
         {/* 3 Standard White Cards Grid (32px Radius, Zero Shadow) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left"
+          variants={cardGrid}
+          initial={reduceMotion ? false : 'hidden'}
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.25 }}
+        >
           {useCases.map((uc, i) => {
             const Icon = uc.icon
             return (
-              <div key={i} className="card bg-paper-white rounded-[32px] p-8 space-y-4">
+              <motion.div
+                key={i}
+                variants={cardItem}
+                whileHover={reduceMotion ? undefined : { y: -4 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className="card bg-paper-white rounded-[32px] p-8 space-y-4"
+              >
                 <div className="flex items-center justify-between">
                   <div className="w-10 h-10 rounded-[12px] bg-mist-gray flex items-center justify-center text-carbon-black">
                     <Icon className="w-5 h-5" strokeWidth={1.5} />
@@ -264,10 +311,10 @@ export default function Hero({ onLaunch }: HeroProps) {
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
+              </motion.div>
             )
           })}
-        </div>
+        </motion.div>
 
       </div>
     </div>

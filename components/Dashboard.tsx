@@ -446,12 +446,18 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
 
         {library.length > 0 ? (
           <div className="space-y-3">
-            {library.map((v) => {
+            {library.map((v, i) => {
               const isSwitching = switching === v.jobId
               const done = v.state === 'done' && v.hasResults
               return (
-                <div
+                <motion.div
                   key={v.jobId}
+                  // Rows fade in top-to-bottom. Capped at 6 so a long library
+                  // does not make the last row wait: past that the stagger stops
+                  // reading as sequence and starts reading as lag.
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, delay: Math.min(i, 6) * 0.05, ease: [0.16, 1, 0.3, 1] }}
                   className={cn(
                     'group w-full p-4 rounded-xl border bg-card text-left transition-all',
                     v.isActive
@@ -584,7 +590,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                       )}
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )
             })}
           </div>

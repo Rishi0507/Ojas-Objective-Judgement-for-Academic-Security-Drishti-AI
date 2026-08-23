@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cancelJob } from '@/lib/pipelineJobs'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const jobId = request.nextUrl.searchParams.get('job')

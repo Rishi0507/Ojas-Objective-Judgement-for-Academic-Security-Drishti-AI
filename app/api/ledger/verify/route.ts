@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+
+export const dynamic = 'force-dynamic'
 import { verifyChain } from '@/lib/ledger/chain'
 import { readChain } from '@/lib/ledger/store'
 import { activeAnchor, buildBatch } from '@/lib/ledger/anchor'
