@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ShieldCheck, ShieldAlert, RefreshCw, AlertTriangle, Link2 } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, RefreshCw, AlertTriangle, Link2, FileText, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -56,6 +56,7 @@ const KIND_LABELS: Record<string, string> = {
   video_uploaded: 'Video uploaded',
   artifact_derived: 'Artifact derived',
   verdict_recorded: 'Verdict recorded',
+  report_generated: 'Report issued',
   anchor_published: 'Anchor published',
 }
 
@@ -63,6 +64,7 @@ const KIND_STYLES: Record<string, string> = {
   video_uploaded: 'bg-blue-50 text-blue-700 border-blue-200',
   artifact_derived: 'bg-muted text-muted-foreground border-border',
   verdict_recorded: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  report_generated: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   anchor_published: 'bg-purple-50 text-purple-700 border-purple-200',
 }
 
@@ -86,6 +88,8 @@ export default function LedgerView() {
   const [data, setData] = useState<VerifyResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [issuing, setIssuing] = useState(false)
+  const [issueResult, setIssueResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -108,6 +112,28 @@ export default function LedgerView() {
   }
 
   useEffect(load, [])
+
+  // Hand the current job to the n8n workflow, which renders the document and
+  // mails it. Issuing appends a report_generated entry, so the chain is
+  // re-read afterwards rather than left showing a stale count.
+  const issueReport = async () => {
+    setIssuing(true)
+    setIssueResult(null)
+    try {
+      const res = await fetch('/api/report/dispatch', { method: 'POST' })
+      const data = await res.json()
+      setIssueResult(
+        res.ok
+          ? { ok: true, message: `Report issued for ${data.jobId} and sent to the workflow.` }
+          : { ok: false, message: data.error ?? `Failed (${res.status})` }
+      )
+      if (res.ok) load()
+    } catch (e) {
+      setIssueResult({ ok: false, message: String(e) })
+    } finally {
+      setIssuing(false)
+    }
+  }
 
   if (loading && !data) {
     return <div className="p-8 text-muted-foreground">Verifying custody chain…</div>
@@ -142,15 +168,43 @@ export default function LedgerView() {
             that follows.
           </p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg font-medium hover:bg-accent transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} strokeWidth={2} />
-          Re-verify
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg font-medium hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} strokeWidth={2} />
+            Re-verify
+          </button>
+          <button
+            onClick={issueReport}
+            disabled={issuing}
+            title="Renders the incident report, records its hash in this chain, and mails it"
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {issuing ? (
+              <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+            ) : (
+              <FileText className="w-4 h-4" strokeWidth={2} />
+            )}
+            {issuing ? 'Issuing…' : 'Issue report'}
+          </button>
+        </div>
       </div>
+
+      {issueResult && (
+        <div
+          className={cn(
+            'card p-4 text-sm border',
+            issueResult.ok
+              ? 'border-emerald-300 bg-emerald-50/40 text-emerald-800'
+              : 'border-red-300 bg-red-50/50 text-red-700'
+          )}
+        >
+          {issueResult.message}
+        </div>
+      )}
 
       {/* Verification result. The single most important thing on the page. */}
       <div
