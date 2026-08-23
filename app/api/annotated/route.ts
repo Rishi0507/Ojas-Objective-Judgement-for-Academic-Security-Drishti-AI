@@ -4,6 +4,8 @@ import path from 'path';
 import { getCurrentPipelineDir } from '@/lib/currentVideo';
 import { assetETag, isFresh } from '@/lib/assetCache';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
