@@ -560,17 +560,31 @@ async function processUploadedVideo(
       ownerId,
     })
 
-    // Chain the derived evidence to the upload it came from.
+    // Chain the derived evidence to the upload it came from, and mirror the
+    // results into Supabase. Both are hashed or read from disk rather than
+    // from the in-memory object: the file is what will be produced if anyone
+    // asks for the evidence later, so the file is what must be attested.
     //
-    // Hashed from disk rather than from the in-memory object: the file is what
-    // will be produced if anyone asks for the evidence later, so the file is
-    // what must be attested. Recorded after the job is marked done, alongside
-    // the Supabase mirror, so neither can delay the UI.
-    await recordArtifacts(jobId, ownerId, outDir, enriched)
-
-    // Mirror artefacts and rows into Supabase after the job is already marked
-    // done locally, so a slow or failing upload never delays the UI.
-    await syncJobResults(jobId, ownerId, outDir, enriched, proxyPath ?? videoPath)
+    // Deliberately NOT awaited. Both are best-effort and both run after the
+    // job is already marked done - but awaiting them still held the queue,
+    // so every video delayed the NEXT one by the 20-30s these take against
+    // the network. The UI showed "complete" while the queue sat blocked.
+    //
+    // Errors are caught here rather than left to float: an unhandled rejection
+    // from a detached promise takes down the whole dev server, which would
+    // turn a failed ledger write into a failed application.
+    void (async () => {
+      try {
+        await recordArtifacts(jobId, ownerId, outDir, enriched)
+      } catch (err) {
+        console.error(`[ledger] ${jobId}: recording artifacts failed -`, err)
+      }
+      try {
+        await syncJobResults(jobId, ownerId, outDir, enriched, proxyPath ?? videoPath)
+      } catch (err) {
+        console.error(`[supabase] ${jobId}: mirroring results failed -`, err)
+      }
+    })()
   } catch (err: any) {
     writeStatus(jobId, {
       state: 'error',
@@ -647,8 +661,19 @@ async function recordArtifacts(
     }
   }
 
-  for (const s of snapshots.slice(0, MAX_SNAPSHOT_ENTRIES)) {
-    await record(s.file, s.meta)
+  // Written in parallel batches rather than one at a time. Each append is a
+  // round trip to Postgres, so fifty sequential writes spent ~15-25s almost
+  // entirely waiting on the network - and that time blocked the queue behind
+  // it, delaying the NEXT video rather than this one.
+  //
+  // Safe to parallelise: chain position is assigned inside ledger_append()
+  // under an advisory lock, so Postgres decides the order regardless of the
+  // order calls arrive in. The batch size keeps a burst of concurrent
+  // connections from being mistaken for a flood.
+  const shown = snapshots.slice(0, MAX_SNAPSHOT_ENTRIES)
+  const BATCH = 8
+  for (let i = 0; i < shown.length; i += BATCH) {
+    await Promise.all(shown.slice(i, i + BATCH).map((s) => record(s.file, s.meta)))
   }
 
   if (snapshots.length > MAX_SNAPSHOT_ENTRIES) {

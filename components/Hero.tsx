@@ -61,17 +61,16 @@ const useCases = [
  */
 const cardGrid = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
+  visible: { transition: { staggerChildren: 0.14, delayChildren: 0.08 } },
 }
 
 const cardItem = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: { opacity: 0, y: 36, scale: 0.96 },
   visible: {
     opacity: 1,
     y: 0,
-    // Slightly overdamped: it settles rather than bouncing, which suits a
-    // page about evidence more than a springy one would.
-    transition: { type: 'spring', stiffness: 220, damping: 28, mass: 0.9 },
+    scale: 1,
+    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] },
   },
 }
 
@@ -92,7 +91,13 @@ export default function Hero({ onLaunch }: HeroProps) {
 
   return (
     <div className="relative min-h-screen bg-warm-canvas text-carbon-black font-sans select-none pb-20 overflow-hidden">
+      {/* Dynamic Fluid Vector Canvas Background */}
       <FluidFlowGrid />
+
+      {/* Ambient Radial Gradient Glows for High-Vibrancy Visual Depth */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl pointer-events-none z-0" />
+      <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none z-0" />
+
       <div className="relative z-10 max-w-[1200px] mx-auto px-8 pt-8 space-y-20">
         
         {/*
@@ -115,15 +120,16 @@ export default function Hero({ onLaunch }: HeroProps) {
           </div>
 
           {user && (
-            <div className="inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border border-ash bg-paper-white/60 text-sm text-slate flex-shrink-0">
+            <div className="inline-flex items-center gap-2.5 pl-3.5 pr-2 py-1.5 rounded-full border border-slate/30 bg-paper-white/85 backdrop-blur-md text-sm text-slate shadow-sm flex-shrink-0">
+              <GoogleIcon className="w-4 h-4 flex-shrink-0" />
               <span className="truncate max-w-[220px]">
                 <span className="font-medium text-carbon-black">{user.email}</span>
               </span>
               <button
                 onClick={signOut}
-                className="flex items-center gap-1 px-2 py-1 rounded-full text-xs text-slate hover:bg-mist-gray hover:text-carbon-black transition-colors flex-shrink-0"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-slate hover:bg-mist-gray hover:text-carbon-black transition-colors flex-shrink-0"
               >
-                <LogOut className="w-3 h-3" />
+                <LogOut className="w-3.5 h-3.5" />
                 Sign out
               </button>
             </div>
@@ -137,8 +143,6 @@ export default function Hero({ onLaunch }: HeroProps) {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            // Staggered rather than one block fade: the eye lands on the tag,
-            // then the headline, then the copy - the order it should read in.
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.08 }}
             className="lg:col-span-7 text-left space-y-6"
           >
@@ -163,7 +167,7 @@ export default function Hero({ onLaunch }: HeroProps) {
                 ) : canEnter ? (
                   <button
                     onClick={onLaunch}
-                    className="btn-primary group transition-transform duration-150 active:scale-[0.98]"
+                    className="btn-primary group transition-transform duration-150 active:scale-[0.98] shadow-md"
                   >
                     <span>Launch Dashboard</span>
                     <ArrowUpRight className="w-4 h-4 text-paper-white transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -171,7 +175,7 @@ export default function Hero({ onLaunch }: HeroProps) {
                 ) : (
                   <button
                     onClick={signInWithGoogle}
-                    className="btn-primary flex items-center gap-3 transition-transform duration-150 active:scale-[0.98]"
+                    className="btn-primary flex items-center gap-3 transition-transform duration-150 active:scale-[0.98] shadow-md"
                   >
                     <GoogleIcon className="w-5 h-5" />
                     <span>Sign in with Google</span>
@@ -196,30 +200,19 @@ export default function Hero({ onLaunch }: HeroProps) {
             </div>
           </motion.div>
 
-          {/* Right Column: Flat White Card (32px Radius, Zero Shadow, Zero Border) */}
+          {/* Right Column: Flat White Card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            // Nudged above the grid's centre line: the headline column is
-            // taller, so true centring parks the card noticeably below the
-            // headline's optical top edge.
             className="lg:col-span-5 lg:-mt-24"
           >
-            <div className="card bg-paper-white rounded-[32px] p-6 space-y-4">
+            <div className="card bg-paper-white/90 backdrop-blur-sm rounded-[32px] p-6 space-y-4 shadow-xl border border-ash/40">
               <div className="flex items-center justify-between border-b border-mist-gray pb-3">
                 <span className="font-condensed text-xl font-bold uppercase tracking-tight">What A Finding Looks Like</span>
                 <span className="tag-mint">illustration</span>
               </div>
 
-              {/*
-                Inline SVG rather than the CDN-hosted animation that was here.
-                This is an offline exam-hall system: a landing page that only
-                renders correctly with internet access contradicts the product,
-                and the Google mark above is inlined for exactly this reason.
-                Labelled "illustration" because it is a diagram of the output
-                format, not a screenshot of a real detection.
-              */}
               <div className="aspect-video bg-warm-canvas rounded-[24px] p-4 relative overflow-hidden">
                 <svg viewBox="0 0 320 180" className="w-full h-full" role="img"
                      aria-label="Diagram: two people detected in a frame, one flagged, with a timeline of motion below.">
@@ -250,13 +243,13 @@ export default function Hero({ onLaunch }: HeroProps) {
 
         </div>
 
-        {/* Inverted Black Section Block (32px Radius) */}
+        {/* Inverted Black Section Block with Smooth Scroll Animation */}
         <motion.div
-          initial={reduceMotion ? false : { opacity: 0, y: 28 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          className="card-inverted bg-carbon-black rounded-[32px] p-10 space-y-6 text-left"
+          initial={reduceMotion ? false : { opacity: 0, y: 48, scale: 0.96 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.2 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="card-inverted bg-carbon-black rounded-[32px] p-10 space-y-6 text-left relative z-10 shadow-2xl"
         >
           <div className="flex items-center justify-between">
             <span className="tag-mint">evidence, not verdicts</span>
@@ -271,13 +264,13 @@ export default function Hero({ onLaunch }: HeroProps) {
           </p>
         </motion.div>
 
-        {/* 3 Standard White Cards Grid (32px Radius, Zero Shadow) */}
+        {/* 3 Standard White Cards Grid with Smooth Staggered Scroll Animation */}
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left"
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left relative z-10"
           variants={cardGrid}
           initial={reduceMotion ? false : 'hidden'}
           whileInView="visible"
-          viewport={{ once: true, amount: 0.25 }}
+          viewport={{ once: true, amount: 0.2 }}
         >
           {useCases.map((uc, i) => {
             const Icon = uc.icon
@@ -285,9 +278,9 @@ export default function Hero({ onLaunch }: HeroProps) {
               <motion.div
                 key={i}
                 variants={cardItem}
-                whileHover={reduceMotion ? undefined : { y: -4 }}
+                whileHover={reduceMotion ? undefined : { y: -6, scale: 1.01 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className="card bg-paper-white rounded-[32px] p-8 space-y-4"
+                className="card bg-paper-white/90 backdrop-blur-sm rounded-[32px] p-8 space-y-4 shadow-lg border border-ash/40"
               >
                 <div className="flex items-center justify-between">
                   <div className="w-10 h-10 rounded-[12px] bg-mist-gray flex items-center justify-center text-carbon-black">
