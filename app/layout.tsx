@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'], weight: ['400', '500'], variable: '--f
 const mono = Roboto_Mono({ subsets: ['latin'], weight: ['400'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'DrishtiAI — Exam Hall Video Review',
+  title: 'OJAS — Objective Judgement for Academic Sincerity',
   description:
     'Offline analysis of exam hall CCTV. Surfaces motion segments and reviewable findings with the frame and bounding box each one came from, for an invigilator to confirm or dismiss.',
 }

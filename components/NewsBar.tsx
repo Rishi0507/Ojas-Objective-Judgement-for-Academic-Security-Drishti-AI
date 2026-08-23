@@ -42,7 +42,7 @@ export default function NewsBar() {
       style={{ backgroundColor: 'var(--bar)' }}
     >
       <span className="font-mono text-caption text-muted-foreground">
-        DRISHTI <span style={{ color: 'var(--accent)' }}>•</span> {date}{' '}
+        OJAS <span style={{ color: 'var(--accent)' }}>•</span> {date}{' '}
         <span style={{ color: 'var(--accent)' }}>•</span> {status}
       </span>
     </div>

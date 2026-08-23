@@ -31,10 +31,11 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
       <div className="mb-2">
         <button 
           onClick={() => onViewChange('dashboard')}
-          className="w-10 h-10 bg-paper-white rounded-[16px] flex items-center justify-center font-condensed text-xl font-bold text-carbon-black transition-transform hover:scale-105"
-          title="DrishtiAI"
+          className="w-10 h-10 bg-paper-white rounded-[16px] flex items-center justify-center overflow-hidden transition-transform hover:scale-105"
+          title="OJAS — Objective Judgement for Academic Sincerity"
         >
-          DA
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/ojas-logo.png" alt="OJAS" className="w-8 h-8 object-contain" />
         </button>
       </div>
 

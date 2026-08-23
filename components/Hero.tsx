@@ -72,10 +72,18 @@ export default function Hero({ onLaunch }: HeroProps) {
             transition={{ duration: 0.4 }}
             className="lg:col-span-7 text-left space-y-6"
           >
-            <div className="flex items-center gap-3">
-              <span className="tag-mint">
-                offline video analysis
-              </span>
+            <div className="flex items-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/ojas-logo.png" alt="OJAS" className="w-14 h-14 object-contain" />
+              <div>
+                <div className="font-condensed text-2xl font-bold uppercase tracking-tight leading-none text-carbon-black">
+                  OJAS
+                </div>
+                <div className="text-xs text-slate mt-1">
+                  Objective Judgement for Academic Sincerity
+                </div>
+              </div>
+              <span className="tag-mint ml-1">offline video analysis</span>
             </div>
 
             {/* Massive 80px-130px Uppercase Condensed Headline at 0.9 Line-Height */}
