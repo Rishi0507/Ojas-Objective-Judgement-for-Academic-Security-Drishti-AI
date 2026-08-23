@@ -1,0 +1,54 @@
+<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:640px;color:#0f172a;line-height:1.5;">
+
+  <div style="border-left:4px solid #0f172a;padding:2px 0 2px 14px;margin-bottom:20px;">
+    <div style="font-size:19px;font-weight:700;">Exam Integrity Report</div>
+    <div style="font-size:13px;color:#475569;margin-top:3px;">{{ $json.provenance.sourceFilename }}</div>
+  </div>
+
+  <p style="font-size:14px;margin:0 0 18px;">
+    Automated analysis has finished. The full report is attached, including the
+    evidence still for every finding and the custody record behind it.
+  </p>
+
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+    <tr>
+      <td style="padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;">Findings surfaced</td>
+      <td style="padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;text-align:right;font-weight:700;">{{ $json.summary.findingsTotal }}</td>
+    </tr>
+    <tr>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;">Confirmed by reviewer</td>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:right;font-weight:700;">{{ $json.summary.confirmed }}</td>
+    </tr>
+    <tr>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;">Dismissed as false positives</td>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:right;">{{ $json.summary.dismissed }}</td>
+    </tr>
+    <tr>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;">Filtered automatically before review</td>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:right;">{{ $json.summary.autoFilteredByClip }}</td>
+    </tr>
+    <tr>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;">Awaiting review</td>
+      <td style="padding:9px 12px;border:1px solid #e2e8f0;text-align:right;font-weight:700;">{{ $json.summary.awaitingReview }}</td>
+    </tr>
+  </table>
+
+  {{ $json.summary.awaitingReview > 0 ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:12px 14px;font-size:13px;margin-bottom:18px;"><b>This review is not complete.</b> ' + $json.summary.awaitingReview + ' finding(s) have not yet been accepted or rejected by a reviewer. Nothing in this report is a determination of misconduct.</div>' : '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;font-size:13px;margin-bottom:18px;">Every finding in this report has been reviewed by a person.</div>' }}
+
+  <div style="font-size:13px;color:#334155;border-top:1px solid #e2e8f0;padding-top:14px;">
+    <div style="font-weight:600;margin-bottom:6px;">Integrity</div>
+    <div>Custody chain: {{ $json.integrity.entriesInChain }} entries, {{ $json.integrity.chainVerified ? 'verified from genesis' : 'VERIFICATION FAILED' }}.</div>
+    <div>{{ $json.integrity.signedEntries }} of {{ $json.integrity.entriesInChain }} entries cryptographically signed.</div>
+    <div style="margin-top:6px;">Report hash<br>
+      <code style="font-size:11px;color:#475569;word-break:break-all;">{{ $json.issued.reportHash }}</code>
+    </div>
+  </div>
+
+  <p style="font-size:12px;color:#64748b;border-top:1px solid #e2e8f0;margin-top:18px;padding-top:12px;">
+    Findings are produced by motion, pose and object heuristics and are prompts for
+    human review, not evidence of cheating. Subjects are anonymous per-video track
+    identifiers; no facial recognition is performed. The attached report states in
+    full what this system can and cannot establish.
+  </p>
+
+</div>

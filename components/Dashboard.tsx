@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { JobStatus } from '@/lib/useUploadJob'
+import { cn } from '@/lib/utils'
 
 interface DashboardProps {
   onVideoSelect: (videoId: string) => void
@@ -36,6 +37,8 @@ interface VideoData {
 export default function Dashboard({ onVideoSelect, job, onUploadFile }: DashboardProps) {
   const [videoData, setVideoData] = useState<VideoData | null>(null)
   const [verdicts, setVerdicts] = useState<Record<string, string>>({})
+  const [library, setLibrary] = useState<any[]>([])
+  const [switching, setSwitching] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -67,9 +70,40 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
       .catch(() => setVerdicts({}))
   }
 
+  // Every processed run, not just the active one. Uploads used to overwrite a
+  // single pointer, so each new video hid the previous one even though all of
+  // its output was still on disk.
+  const loadLibrary = () => {
+    fetch('/api/videos')
+      .then((r) => r.json())
+      .then((d) => setLibrary(d?.videos ?? []))
+      .catch(() => setLibrary([]))
+  }
+
+  const selectVideo = async (jobId: string) => {
+    setSwitching(jobId)
+    try {
+      const res = await fetch('/api/videos/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      })
+      if (res.ok) {
+        // Every other view resolves through the active pointer, so refresh the
+        // dashboard's own data as well as the list.
+        loadVideoData()
+        loadVerdicts()
+        loadLibrary()
+      }
+    } finally {
+      setSwitching(null)
+    }
+  }
+
   useEffect(() => {
     loadVideoData()
     loadVerdicts()
+    loadLibrary()
   }, [])
 
   // job/upload polling now lives in page.tsx (via useUploadJob) so it
@@ -79,6 +113,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
     if (job?.state === 'done') {
       loadVideoData()
       loadVerdicts()
+      loadLibrary()
     }
   }, [job?.state, job?.jobId])
 
@@ -98,7 +133,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   }
 
   // Calculate stats from real data (all zero when no video has been processed yet)
-  const totalVideos = videoData ? 1 : 0
+  const totalVideos = library.length
   const totalEvents = videoData?.event_count ?? 0
   const highPriorityCount = videoData ? videoData.events.filter(e => e.priority === 'high').length : 0
 
@@ -116,7 +151,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   const reviewedPct = totalOffences > 0 ? Math.round((reviewedCount / totalOffences) * 100) : 0
 
   const stats = [
-    { label: 'Videos Processed', value: totalVideos.toString(), icon: Video, change: videoData ? 'This machine' : 'None yet' },
+    { label: 'Videos Processed', value: totalVideos.toString(), icon: Video, change: totalVideos > 0 ? 'On this machine' : 'None yet' },
     { label: 'Motion Segments', value: totalEvents.toString(), icon: Activity, change: 'Windows of activity' },
     { label: 'Findings', value: totalOffences.toString(), icon: AlertTriangle, change: `${highPriorityCount} high priority` },
     {
@@ -161,7 +196,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <h1 className="text-4xl font-bold tracking-tight mb-2">
             Analytics <span className="font-serif italic">Dashboard</span>
           </h1>
-          <p className="text-muted-foreground">Results from the most recently processed video</p>
+          <p className="text-muted-foreground">Stats below are for the video currently being viewed</p>
         </div>
 
         <div className="flex-shrink-0">
@@ -282,45 +317,90 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-semibold">Recent Videos</h2>
-            <p className="text-sm text-muted-foreground">Click to view analysis</p>
+            <p className="text-sm text-muted-foreground">Every video processed on this machine. Switching changes what the other tabs show.</p>
           </div>
         </div>
-        {video ? (
+        {library.length > 0 ? (
           <div className="space-y-3">
-            <button
-              onClick={() => onVideoSelect(video.id)}
-              className="w-full p-4 card card-hover text-left"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-primary/5 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Video className="w-6 h-6 text-primary" strokeWidth={2} />
-                </div>
+            {library.map((v) => {
+              const isSwitching = switching === v.jobId
+              const done = v.state === 'done' && v.hasResults
+              return (
+                <div
+                  key={v.jobId}
+                  className={cn(
+                    'w-full p-4 card text-left transition-colors',
+                    v.isActive && 'border-primary bg-primary/5'
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-primary/5 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Video className="w-6 h-6 text-primary" strokeWidth={2} />
+                    </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium mb-1">{video.name}</div>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      {video.lastActivity}
-                    </span>
-                    <span>•</span>
-                    <span>{video.events} segments</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 font-mono">
-                      <Eye className="w-4 h-4" />
-                      {video.quality.toFixed(2)}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium mb-1 truncate">{v.filename}</div>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                        <span>{v.eventCount} segments</span>
+                        {v.offenceCount !== null && (
+                          <>
+                            <span>&middot;</span>
+                            <span>{v.offenceCount} findings</span>
+                          </>
+                        )}
+                        {v.sizeMb !== null && (
+                          <>
+                            <span>&middot;</span>
+                            <span className="font-mono text-xs">{v.sizeMb} MB</span>
+                          </>
+                        )}
+                        {v.startedAt && (
+                          <>
+                            <span>&middot;</span>
+                            <span className="text-xs">
+                              {new Date(v.startedAt).toLocaleString('en-GB', {
+                                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {!done && (
+                        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-xs rounded-full font-medium border border-amber-200">
+                          {v.state}
+                        </span>
+                      )}
+                      {v.isActive ? (
+                        <span className="px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200">
+                          Viewing
+                        </span>
+                      ) : (
+                        done && (
+                          <button
+                            onClick={() => selectVideo(v.jobId)}
+                            disabled={isSwitching}
+                            className="px-3 py-1.5 border border-border rounded-md text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+                          >
+                            {isSwitching ? 'Switching…' : 'View'}
+                          </button>
+                        )
+                      )}
+                      {v.isActive && done && (
+                        <button
+                          onClick={() => onVideoSelect(v.videoId ?? v.jobId)}
+                          className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition-colors"
+                        >
+                          Analyse
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                <div className="text-right flex-shrink-0">
-                  <div className="text-xs text-muted-foreground mb-2">{video.timestamp}</div>
-                  <span className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200">
-                    Completed
-                  </span>
-                </div>
-              </div>
-            </button>
+              )
+            })}
           </div>
         ) : (
           <div className="py-12 flex flex-col items-center justify-center text-center">
