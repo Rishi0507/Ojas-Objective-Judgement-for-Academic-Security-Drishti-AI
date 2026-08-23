@@ -68,10 +68,18 @@ const KIND_STYLES: Record<string, string> = {
   anchor_published: 'bg-purple-50 text-purple-700 border-purple-200',
 }
 
-/** First 16 hex chars. Enough to compare by eye, short enough to read. */
+/**
+ * Hashes are shown as their first two characters plus a fixed-width mask.
+ *
+ * A 64-char hash printed in full is unreadable and invites nobody to check it;
+ * two characters is enough to spot at a glance that two rows differ, which is
+ * the only comparison a person makes by eye. The full value stays available on
+ * hover and by copy, so verification is a deliberate act rather than the
+ * default visual noise.
+ */
 function shortHash(h: string | null): string {
   if (!h) return '—'
-  return `${h.slice(0, 16)}…`
+  return `${h.slice(0, 2)}${'•'.repeat(10)}`
 }
 
 function formatTime(ts: string): string {
@@ -159,7 +167,7 @@ export default function LedgerView() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">
-            Custody <span className="font-serif italic">Ledger</span>
+            Custody <span className="font-normal text-muted-foreground">Ledger</span>
           </h1>
           <p className="text-muted-foreground max-w-2xl">
             An append-only, hash-linked record of every act performed on this evidence: each

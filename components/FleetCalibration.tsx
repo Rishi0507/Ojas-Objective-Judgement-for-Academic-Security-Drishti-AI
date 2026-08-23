@@ -6,6 +6,7 @@ import {
   RefreshCw, Search, ChevronDown, ChevronRight, Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PageSkeleton } from './Skeleton'
 
 /**
  * Camera readiness across exam centres.
@@ -194,7 +195,7 @@ export default function FleetCalibration() {
     }
   }
 
-  if (loading) return <div className="p-8 text-muted-foreground">Loading camera health...</div>
+  if (loading) return <PageSkeleton variant="list" label="Loading camera health" />
 
   const total = cameras.length
   const ready = counts.stable ?? 0

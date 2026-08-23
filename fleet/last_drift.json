@@ -5,25 +5,25 @@
     "verdict": "stable",
     "regions_shifted": 0,
     "regions_compared": 12,
-    "peak_shift": 0.12,
+    "peak_shift": 0.06,
     "reasoning": "All 12 regions within 3 sigma of their stored normal (peak 0.1). Evidence from this camera is comparable to previous sessions.",
     "worst_regions": [
       {
         "region": "r2c2",
-        "shift": 0.12,
-        "was": 0.629699,
+        "shift": 0.06,
+        "was": 0.674303,
         "now": 0.718906
       },
       {
         "region": "r0c2",
-        "shift": 0.11,
-        "was": 0.3295,
+        "shift": 0.05,
+        "was": 0.341209,
         "now": 0.352917
       },
       {
         "region": "r2c3",
-        "shift": 0.06,
-        "was": 0.01208,
+        "shift": 0.03,
+        "was": 0.011356,
         "now": 0.010632
       }
     ]

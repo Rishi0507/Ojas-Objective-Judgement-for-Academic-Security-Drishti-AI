@@ -54,20 +54,32 @@ export default function Home() {
         />
 
         {job && (job.state === 'queued' || job.state === 'processing') && (
-          <div className="px-6 py-3 bg-primary/5 border-b border-primary/20 flex items-center gap-3 flex-shrink-0">
+          <div className="relative px-6 py-3 bg-primary/5 border-b border-primary/20 flex items-center gap-3 flex-shrink-0 banner-enter">
+            {/* Progress also runs along the banner's bottom edge, so it stays
+                visible while scrolled and reads as one continuous motion
+                instead of a bar that jumps between poll responses. */}
+            <div
+              className="absolute bottom-0 left-0 h-[2px] bg-primary/70 transition-[width] duration-1000 ease-linear"
+              style={{ width: `${Math.min(100, Math.max(0, job.percent ?? 0))}%` }}
+            />
             <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" strokeWidth={2} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-medium truncate">Processing "{job.filename}"</span>
+                <span className="font-medium truncate">Processing &ldquo;{job.filename}&rdquo;</span>
                 {job.percent !== undefined && (
-                  <span className="font-mono text-xs text-muted-foreground flex-shrink-0">{Math.round(job.percent)}%</span>
+                  <span className="font-mono text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                    {Math.round(job.percent)}%
+                  </span>
                 )}
               </div>
               <div className="text-xs text-muted-foreground truncate">{job.message}</div>
               {job.percent !== undefined && (
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1.5">
+                  {/* 1s linear, matching the 1.5s status poll: an ease that
+                      finishes early leaves the bar visibly parked between
+                      updates, which reads as a stall. */}
                   <div
-                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    className="h-full bg-primary rounded-full transition-[width] duration-1000 ease-linear"
                     style={{ width: `${Math.min(100, Math.max(0, job.percent))}%` }}
                   />
                 </div>
@@ -98,7 +110,7 @@ export default function Home() {
         )}
 
         {uploadError && (
-          <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-start gap-3 flex-shrink-0">
+          <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex items-start gap-3 flex-shrink-0 banner-enter">
             <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
             <div className="min-w-0 flex-1 text-sm text-red-600">{uploadError}</div>
             <button onClick={dismissError} className="text-red-600 hover:text-red-800 text-xs font-medium flex-shrink-0">
@@ -107,7 +119,10 @@ export default function Home() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
+        {/* keyed on the active view so React remounts the wrapper on every
+            change, which restarts the enter animation. Without the key the
+            class is already applied and the transition never replays. */}
+        <main key={activeView} className="flex-1 overflow-y-auto view-enter">
           {activeView === 'dashboard' && (
             <Dashboard
               job={job}

@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload, Trash2, Archive } from 'lucide-react'
+import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload, Trash2, Archive, Play, ChevronRight, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { JobStatus } from '@/lib/useUploadJob'
-import { cn } from '@/lib/utils'
+import { PageSkeleton } from './Skeleton'
 
 interface DashboardProps {
   onVideoSelect: (videoId: string) => void
@@ -158,11 +159,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   }
 
   if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading dashboard...</div>
-      </div>
-    )
+    <PageSkeleton variant="dashboard" label="Loading dashboard" />
   }
 
   // Calculate stats from real data (all zero when no video has been processed yet)
@@ -195,17 +192,44 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
     },
   ]
 
-  // Generate activity data from events
-  const activityData = videoData ? Array.from({ length: Math.ceil(videoData.events[videoData.events.length - 1]?.end / 10) || 24 }, (_, i) => {
-    const timeSlot = i * 10
-    const eventsInSlot = videoData.events.filter(e =>
-      e.start <= timeSlot + 10 && e.end >= timeSlot
-    ).length
-    return {
-      hour: timeSlot,
-      events: eventsInSlot
-    }
-  }) : []
+  /**
+   * Activity per time slot.
+   *
+   * Bucket width is derived from the video's own length rather than fixed at
+   * 10s: a fixed width gives 14 points on a 143s clip and over a thousand on a
+   * three-hour recording, so the same chart is either too coarse to read or too
+   * dense to render. Targeting a constant number of buckets keeps the shape
+   * legible at any duration.
+   *
+   * Duration comes from the last event's end, falling back to 60s, because an
+   * axis that stops before the footage does misrepresents where activity sat.
+   */
+  const TARGET_BUCKETS = 48
+  const activityData = (() => {
+    if (!videoData?.events?.length) return []
+    const duration = Math.max(...videoData.events.map((e) => e.end), 60)
+    const bucket = Math.max(1, duration / TARGET_BUCKETS)
+    return Array.from({ length: Math.ceil(duration / bucket) }, (_, i) => {
+      const from = i * bucket
+      const to = from + bucket
+      // An event counts in every bucket it spans, so a long event reads as a
+      // plateau rather than a single spike at its start.
+      const active = videoData.events.filter((e) => e.start < to && e.end > from)
+      return {
+        t: from,
+        events: active.length,
+        // Peak motion in the slot: distinguishes "four quiet events overlap"
+        // from "one violent event", which a bare count cannot.
+        intensity: active.length ? Math.max(...active.map((e) => e.motionScore ?? 0)) : 0,
+      }
+    })
+  })()
+
+  const fmtClock = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${String(sec).padStart(2, '0')}`
+  }
 
   // Format video for display
   const video = videoData ? {
@@ -222,12 +246,14 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
     timestamp: 'Recently processed'
   } : null
 
+  const isBusy = !!job && job.state !== 'done' && job.state !== 'error'
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">
-            Analytics <span className="font-serif italic">Dashboard</span>
+            Analytics <span className="font-normal text-muted-foreground">Dashboard</span>
           </h1>
           <p className="text-muted-foreground">Stats below are for the video currently being viewed</p>
         </div>
@@ -240,13 +266,42 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
             onChange={handleFileSelected}
             className="hidden"
           />
+          {/* The button reports the pipeline's state instead of going grey and
+              silent: a fifteen-minute job that disables its own trigger with no
+              explanation reads as a broken button. */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={!!job && job.state !== 'done' && job.state !== 'error'}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isBusy}
+            className={cn(
+              'relative flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium overflow-hidden',
+              'transition-all duration-200 active:scale-[0.98]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+              isBusy
+                ? 'bg-primary/10 text-primary cursor-progress'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-sm'
+            )}
           >
-            <Upload className="w-4 h-4" strokeWidth={2} />
-            Upload Video
+            {isBusy && (
+              <span
+                className="absolute inset-0 bg-primary/15 transition-[width] duration-700 ease-out"
+                style={{ width: `${Math.min(100, Math.max(0, job?.percent ?? 0))}%` }}
+              />
+            )}
+            <span className="relative flex items-center gap-2">
+              {isBusy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                  <span className="tabular-nums">
+                    Processing {Math.round(job?.percent ?? 0)}%
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" strokeWidth={2} />
+                  Upload Video
+                </>
+              )}
+            </span>
           </button>
         </div>
       </div>
@@ -262,16 +317,22 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
               transition={{ delay: i * 0.05 }}
               className="card p-6 card-hover"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-3 bg-primary/5 rounded-lg">
+              {/* Icon and value share a row and a baseline: the number is the
+                  content, so it should not sit a block below its own label. */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {stat.change}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/5 rounded-xl flex-shrink-0">
                   <Icon className="w-6 h-6 text-primary" strokeWidth={2} />
                 </div>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  {stat.change}
+                <div className="min-w-0">
+                  <div className="text-3xl font-bold leading-none tabular-nums">{stat.value}</div>
+                  <div className="text-sm text-muted-foreground mt-1.5 truncate">{stat.label}</div>
                 </div>
               </div>
-              <div className="text-3xl font-bold mb-1">{stat.value}</div>
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
             </motion.div>
           )
         })}
@@ -282,7 +343,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Activity Timeline</h2>
-              <p className="text-sm text-muted-foreground">Last activity at {video?.lastActivity ?? '—'}</p>
+              <p className="text-sm text-muted-foreground">Peak motion over time · last activity at {video?.lastActivity ?? '—'}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
@@ -294,28 +355,52 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 89%)" />
-              <XAxis 
-                dataKey="hour" 
-                stroke="hsl(215 16% 47%)" 
-                tick={{ fontSize: 12 }}
-                tickFormatter={(val) => `${val}s`}
+              <XAxis
+                dataKey="t"
+                stroke="hsl(215 16% 47%)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={fmtClock}
+                minTickGap={28}
               />
-              <YAxis stroke="hsl(215 16% 47%)" tick={{ fontSize: 12 }} />
+              {/* Motion is 0-1, so a fixed domain keeps the shape comparable
+                  between videos instead of auto-scaling each one to fill the
+                  panel and making every clip look equally active. */}
+              <YAxis
+                stroke="hsl(215 16% 47%)"
+                tick={{ fontSize: 11 }}
+                domain={[0, 1]}
+                ticks={[0, 0.25, 0.5, 0.75, 1]}
+                tickFormatter={(v: number) => v.toFixed(2)}
+                width={36}
+              />
               <Tooltip
-                contentStyle={{ 
-                  background: 'hsl(0 0% 100%)', 
-                  border: '1px solid hsl(0 0% 89%)', 
+                cursor={{ stroke: 'hsl(215 16% 47%)', strokeDasharray: '3 3' }}
+                labelFormatter={(v) => `At ${fmtClock(Number(v))}`}
+                formatter={(value: any, _name: string, entry: any) => [
+                  `${Number(value).toFixed(2)} peak motion · ${entry?.payload?.events ?? 0} segment${entry?.payload?.events === 1 ? '' : 's'} active`,
+                  '',
+                ]}
+                contentStyle={{
+                  background: 'hsl(0 0% 100%)',
+                  border: '1px solid hsl(0 0% 89%)',
                   borderRadius: '8px',
-                  fontSize: '12px'
+                  fontSize: '12px',
                 }}
               />
-              <Area 
-                type="monotone" 
-                dataKey="events" 
-                stroke="hsl(215 25% 27%)" 
+              {/* Peak motion per bucket, not segment count. Counting overlapping
+                  segments produced a flat line at 1 for the whole video - true,
+                  but it showed nothing about where the activity actually was.
+                  stepAfter rather than a smoothed curve: each bucket is a
+                  measured value, and interpolating between them would draw
+                  motion that was never recorded. */}
+              <Area
+                type="stepAfter"
+                dataKey="intensity"
+                stroke="hsl(215 25% 27%)"
                 strokeWidth={2}
-                fillOpacity={1} 
-                fill="url(#colorEvents)" 
+                fillOpacity={1}
+                fill="url(#colorEvents)"
+                isAnimationActive={false}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -368,71 +453,96 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                 <div
                   key={v.jobId}
                   className={cn(
-                    'w-full p-4 card text-left transition-colors',
-                    v.isActive && 'border-primary bg-primary/5'
+                    'group w-full p-4 rounded-xl border bg-card text-left transition-all',
+                    v.isActive
+                      ? 'border-primary/50 bg-primary/[0.03] shadow-sm'
+                      : 'border-border hover:border-primary/30 hover:shadow-sm'
                   )}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-primary/5 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Video className="w-6 h-6 text-primary" strokeWidth={2} />
+                    {/* The active video shows its own heatmap; the rest use a
+                        placeholder, since /api/heatmap only ever serves whatever
+                        is currently selected and would otherwise label every row
+                        with the same image. */}
+                    <div className="relative w-28 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
+                      {v.isActive && done ? (
+                        <img
+                          src="/api/heatmap"
+                          alt=""
+                          className="w-full h-full object-cover opacity-90 transition-transform duration-300 group-hover:scale-105"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Video className="w-5 h-5 text-muted-foreground" strokeWidth={2} />
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium mb-1 truncate">{v.filename}</div>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                        <span>{v.eventCount} segments</span>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="font-medium truncate">{v.filename}</span>
+                        {v.isActive && (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] rounded-full font-medium border border-emerald-200 flex-shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Viewing
+                          </span>
+                        )}
+                        {!done && (
+                          <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[11px] rounded-full font-medium border border-amber-200 flex-shrink-0">
+                            {v.state}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Labelled metrics: a bare "18" beside a bare "4" does not
+                          tell a reviewer which is which. */}
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <Activity className="w-3.5 h-3.5" />
+                          <span className="font-mono tabular-nums text-foreground">{v.eventCount}</span>
+                          segments
+                        </span>
                         {v.offenceCount !== null && (
-                          <>
-                            <span>&middot;</span>
-                            <span>{v.offenceCount} findings</span>
-                          </>
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span className="font-mono tabular-nums text-foreground">{v.offenceCount}</span>
+                            findings
+                          </span>
                         )}
                         {v.sizeMb !== null && (
-                          <>
-                            <span>&middot;</span>
-                            <span className="font-mono text-xs">{v.sizeMb} MB</span>
-                          </>
+                          <span className="text-muted-foreground">
+                            <span className="font-mono tabular-nums text-foreground">{v.sizeMb}</span> MB
+                          </span>
                         )}
                         {v.startedAt && (
-                          <>
-                            <span>&middot;</span>
-                            <span className="text-xs">
-                              {new Date(v.startedAt).toLocaleString('en-GB', {
-                                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                              })}
-                            </span>
-                          </>
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="w-3.5 h-3.5" />
+                            {new Date(v.startedAt).toLocaleString('en-GB', {
+                              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                            })}
+                          </span>
                         )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {!done && (
-                        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-xs rounded-full font-medium border border-amber-200">
-                          {v.state}
-                        </span>
-                      )}
-                      {v.isActive ? (
-                        <span className="px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200">
-                          Viewing
-                        </span>
-                      ) : (
-                        done && (
-                          <button
-                            onClick={() => selectVideo(v.jobId)}
-                            disabled={isSwitching}
-                            className="px-3 py-1.5 border border-border rounded-md text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
-                          >
-                            {isSwitching ? 'Switching…' : 'View'}
-                          </button>
-                        )
+                      {!v.isActive && done && (
+                        <button
+                          onClick={() => selectVideo(v.jobId)}
+                          disabled={isSwitching}
+                          className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium transition-all hover:bg-accent active:scale-[0.98] disabled:opacity-50 disabled:cursor-wait"
+                        >
+                          {isSwitching ? 'Switching…' : 'View'}
+                        </button>
                       )}
                       {v.isActive && done && (
                         <button
                           onClick={() => onVideoSelect(v.videoId ?? v.jobId)}
-                          className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium transition-all hover:bg-primary/90 active:scale-[0.98]"
                         >
                           Analyse
+                          <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
                         </button>
                       )}
 
@@ -487,8 +597,8 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
             <p className="text-sm text-muted-foreground mb-4">Upload a video to run it through the analytics pipeline.</p>
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={!!job && job.state !== 'done' && job.state !== 'error'}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isBusy}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-all duration-200 hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Upload className="w-4 h-4" strokeWidth={2} />
               Upload Video

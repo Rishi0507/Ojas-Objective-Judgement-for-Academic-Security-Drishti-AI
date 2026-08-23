@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Search, Clock, ListFilter, AlertTriangle, X, Undo2, Check, ShieldAlert, ArrowRight, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PageSkeleton } from './Skeleton'
 
 interface OffenceData {
   type: string
@@ -335,11 +336,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   }, [allRows, typeFilter, trackFilter, query, sortKey, verdicts, showDismissed])
 
   if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading offences...</div>
-      </div>
-    )
+    <PageSkeleton variant="list" label="Loading findings" />
   }
 
   if (!videoData) {
@@ -355,7 +352,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     <div className="p-8 space-y-6 max-w-[1600px] mx-auto">
       <div>
         <h1 className="text-4xl font-bold tracking-tight mb-2">
-          Detected <span className="font-serif italic">Offences</span>
+          Detected <span className="font-normal text-muted-foreground">Offences</span>
         </h1>
         <p className="text-muted-foreground">
           {allRows.length} findings across {videoData.event_count} activity{' '}
@@ -484,46 +481,89 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                   key={`${segment.id}-${offence.type}-${offence.frameIdx}-${i}`}
                   onClick={() => setSelected({ offence, segment })}
                   className={cn(
-                    'p-3 card rounded-card flex items-center gap-3 cursor-pointer transition-all hover:scale-[1.01] hover:border-primary/50 group relative',
-                    isDismissed && 'opacity-50'
+                    'p-3 rounded-xl border bg-card flex items-center gap-4 cursor-pointer group relative',
+                    // No scale on hover: these rows sit in a dense list and a
+                    // transform makes neighbouring rows appear to shift. Border
+                    // and shadow read as interactive without moving anything.
+                    'transition-all duration-150 hover:border-primary/40 hover:shadow-sm',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                    isDismissed ? 'opacity-45 border-dashed border-border' : 'border-border'
                   )}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelected({ offence, segment })
+                    }
+                  }}
                 >
+                  {/* Verdict as a spine, so reviewed and unreviewed rows are
+                      distinguishable while scanning rather than only on read. */}
+                  <span
+                    className={cn(
+                      'absolute left-0 top-3 bottom-3 w-1 rounded-full transition-colors',
+                      isConfirmed ? 'bg-emerald-500' : isDismissed ? 'bg-slate-300' : 'bg-transparent'
+                    )}
+                  />
                   {/* Image Thumbnail */}
                   {offence.snapshot ? (
                     <img
                       src={`/api/snapshot?path=${encodeURIComponent(offence.snapshot)}`}
-                      alt={offence.label}
-                      className="w-32 h-22 object-cover rounded-xl flex-shrink-0 border border-border group-hover:opacity-95 transition-opacity"
+                      alt=""
+                      loading="lazy"
+                      className="w-36 h-20 object-cover rounded-lg flex-shrink-0 border border-border bg-muted transition-opacity group-hover:opacity-95"
                     />
                   ) : (
-                    <div className="w-32 h-22 rounded-xl bg-muted/60 border border-dashed border-border flex items-center justify-center flex-shrink-0">
-                      <AlertTriangle className="w-5 h-5 text-muted-foreground" />
+                    <div className="w-36 h-20 rounded-lg bg-muted/60 border border-dashed border-border flex flex-col items-center justify-center flex-shrink-0 gap-1">
+                      <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground">no still</span>
                     </div>
                   )}
 
                   {/* Offence Label / Name */}
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="font-bold text-base text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors">
-                      {offence.label}
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold border', styleFor(offence.type).cls)}>
+                        {styleFor(offence.type).label}
+                      </span>
+                      {offence.trackId && (
+                        <span className="px-1.5 py-0.5 bg-muted rounded text-[11px] font-mono text-muted-foreground">
+                          {offence.trackId}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono tabular-nums">
+                        <Clock className="w-3 h-3" />
+                        {formatTime(offence.startSec)}
+                      </span>
                     </div>
-                    <div className="text-sm text-muted-foreground flex items-center gap-1.5 font-mono">
-                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>{formatTime(offence.startSec)}</span>
+
+                    <div className="font-medium text-sm text-foreground line-clamp-2 leading-snug">
+                      {offence.label}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <ClipBadge offence={offence} />
                       <RegionBadge offence={offence} />
                     </div>
+                  </div>
 
+                  {/* Verdict pinned right so the reviewed/unreviewed column is
+                      scannable straight down the list. */}
+                  <div className="flex-shrink-0 flex items-center gap-2 pl-1">
                     {isConfirmed && (
-                      <span className="inline-flex items-center gap-1 text-xs text-green-600 font-semibold mt-1">
-                        <Check className="w-3.5 h-3.5" /> Confirmed
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-semibold">
+                        <Check className="w-3 h-3" strokeWidth={2.5} /> Confirmed
                       </span>
                     )}
                     {isDismissed && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground italic mt-1">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-slate-100 text-slate-500 text-[11px] font-medium">
                         Dismissed
+                      </span>
+                    )}
+                    {!isConfirmed && !isDismissed && (
+                      <span className="text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                        Review →
                       </span>
                     )}
                   </div>
