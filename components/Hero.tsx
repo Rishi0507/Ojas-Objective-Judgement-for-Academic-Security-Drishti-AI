@@ -69,11 +69,17 @@ export default function Hero({ onLaunch }: HeroProps) {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+            // Staggered rather than one block fade: the eye lands on the tag,
+            // then the headline, then the copy - the order it should read in.
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.08 }}
             className="lg:col-span-7 text-left space-y-6"
           >
             <div className="flex items-center gap-3">
-              <span className="tag-mint">
+              <span className="tag-mint inline-flex items-center gap-2">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+                </span>
                 offline video analysis
               </span>
             </div>
@@ -98,15 +104,15 @@ export default function Hero({ onLaunch }: HeroProps) {
                 ) : canEnter ? (
                   <button
                     onClick={onLaunch}
-                    className="btn-primary"
+                    className="btn-primary group transition-transform duration-150 active:scale-[0.98]"
                   >
                     <span>Launch Dashboard</span>
-                    <ArrowUpRight className="w-4 h-4 text-paper-white" />
+                    <ArrowUpRight className="w-4 h-4 text-paper-white transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                   </button>
                 ) : (
                   <button
                     onClick={signInWithGoogle}
-                    className="btn-primary flex items-center gap-3"
+                    className="btn-primary flex items-center gap-3 transition-transform duration-150 active:scale-[0.98]"
                   >
                     <GoogleIcon className="w-5 h-5" />
                     <span>Sign in with Google</span>
@@ -116,15 +122,16 @@ export default function Hero({ onLaunch }: HeroProps) {
               </div>
 
               {user && (
-                <div className="flex items-center gap-3 text-sm text-slate">
-                  <span>
-                    Signed in as <span className="font-medium text-carbon-black">{user.email}</span>
+                <div className="inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border border-ash bg-paper-white/60 text-sm text-slate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <span className="truncate max-w-[220px]">
+                    <span className="font-medium text-carbon-black">{user.email}</span>
                   </span>
                   <button
                     onClick={signOut}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-ash text-xs hover:bg-mist-gray transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-xs text-slate hover:bg-mist-gray hover:text-carbon-black transition-colors flex-shrink-0"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
+                    <LogOut className="w-3 h-3" />
                     Sign out
                   </button>
                 </div>
