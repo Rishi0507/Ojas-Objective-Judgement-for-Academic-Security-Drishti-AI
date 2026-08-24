@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 
 export interface AuthState {
   user: User | null
-  /** Distinguishes "checking" from "definitely signed out" — without it the UI
+  /** Distinguishes "checking" from "definitely signed out" -  without it the UI
    *  flashes the signed-out state for everyone on every load. */
   loading: boolean
   configured: boolean

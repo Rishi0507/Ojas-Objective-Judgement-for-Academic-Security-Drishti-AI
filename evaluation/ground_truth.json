@@ -1,0 +1,232 @@
+{
+ "_what_this_is": "Manual frame-by-frame annotation of what is visible in each clip, by eye, at 2-second sampling. GROUND TRUTH for evaluating the detector. Never loaded by the app, never enters api_response.json, never reaches the custody ledger.",
+ "_method": "ffmpeg fps=1/2 at 960px, every frame reviewed individually.",
+ "_sampling_caveat": "2s intervals. An action shorter than that can fall between frames.",
+ "clips": [
+  {
+   "clip": "Seat No. 12 was seen taking a piece of paper from the desk.mkv",
+   "durationSec": 88,
+   "scene": "Computer-based exam hall, ~10 candidates at terminals. One young man in white shirt with a lanyard walks the rows throughout - staff, not a candidate.",
+   "annotations": [
+    {
+     "fromSec": 14,
+     "toSec": 54,
+     "subject": "candidate in white shirt, centre-right",
+     "what": "hand resting at chin, sustained across many frames",
+     "verdict": "not an offence",
+     "confidence": "high",
+     "note": "Held for ~40s without variation. Reading posture."
+    },
+    {
+     "fromSec": 72,
+     "toSec": 80,
+     "subject": "same candidate, white shirt",
+     "what": "leans toward the partition (72s), returns (76s), then head turned left in clear profile (80s)",
+     "verdict": "GENUINE head turn",
+     "confidence": "high",
+     "note": "A real sequence, not jitter. Direction is toward the neighbouring station."
+    },
+    {
+     "fromSec": 0,
+     "toSec": 88,
+     "subject": "man in white shirt with lanyard",
+     "what": "walks between rows continuously",
+     "verdict": "not an offence",
+     "confidence": "high",
+     "note": "Invigilator."
+    }
+   ],
+   "detectorSaid": "head_turn, Track-64, t=77.20s",
+   "agreement": "CORRECT - falls inside the 72-80s turn sequence."
+  },
+  {
+   "clip": "01.Candidate was found using a mobile phone in the examination hall..mkv",
+   "durationSec": 131,
+   "scene": "Small lab, sparsely occupied, empties partway through.",
+   "annotations": [
+    {
+     "fromSec": 40,
+     "toSec": 50,
+     "subject": "two candidates",
+     "what": "seated, facing own terminals",
+     "verdict": "not an offence",
+     "confidence": "high"
+    },
+    {
+     "fromSec": 86,
+     "toSec": 92,
+     "subject": "-",
+     "what": "room completely empty",
+     "verdict": "not an offence",
+     "confidence": "high",
+     "note": "Inside the detector's second event window (88-118s)."
+    },
+    {
+     "fromSec": 110,
+     "toSec": 118,
+     "subject": "two women",
+     "what": "standing at a station, handling papers and a bag",
+     "verdict": "not an offence",
+     "confidence": "high",
+     "note": "Arrival/departure with belongings."
+    }
+   ],
+   "detectorSaid": "4 findings; 3 hand_gesture inside the 88-118s window",
+   "agreement": "FALSE POSITIVES - that window is empty or shows people collecting belongings."
+  },
+  {
+   "clip": "02.Candidate was found using a mobile phone in the examination hall..mp4",
+   "durationSec": 212,
+   "scene": "Same lab. A staff member with a lanyard is present and actively assisting candidates - this reads as registration/verification, not a sealed exam.",
+   "annotations": [
+    {
+     "fromSec": 36,
+     "toSec": 42,
+     "subject": "woman in floral top, station ~21",
+     "what": "holding a white sheet up in both hands, reading it",
+     "verdict": "paper clearly visible",
+     "confidence": "high",
+     "note": "Openly held, staff present. Consistent with an admit card during verification."
+    },
+    {
+     "fromSec": 50,
+     "toSec": 62,
+     "subject": "woman in floral top",
+     "what": "head bent down, small object held low near the lap, sustained over multiple frames",
+     "verdict": "PHONE-CONSISTENT posture",
+     "confidence": "medium",
+     "note": "The strongest candidate incident in any clip. Matches the clip title. Object itself is not resolvable."
+    },
+    {
+     "fromSec": 58,
+     "toSec": 66,
+     "subject": "man in camo shirt",
+     "what": "white paper on the desk, staff member standing beside him",
+     "verdict": "not an offence",
+     "confidence": "high",
+     "note": "Assisted by staff."
+    },
+    {
+     "fromSec": 150,
+     "toSec": 158,
+     "subject": "man in camo shirt",
+     "what": "head turned back over the shoulder, away from his terminal",
+     "verdict": "GENUINE head turn",
+     "confidence": "high"
+    },
+    {
+     "fromSec": 134,
+     "toSec": 142,
+     "subject": "staff member",
+     "what": "leaning over the woman's station assisting",
+     "verdict": "not an offence",
+     "confidence": "high"
+    }
+   ],
+   "detectorSaid": "4 findings",
+   "agreement": "The 50-62s phone-consistent sequence and the 150-158s head turn are the two events most worth catching."
+  }
+ ],
+ "_corrections_to_earlier_claims": [
+  "I previously called the Track-64 head turn a FALSE POSITIVE after looking at a single still where the subject faced forward. Reviewing the sequence at 72s, 76s and 80s shows a real lean-and-turn. The detector was right and I was wrong - a single frame cannot settle a temporal event.",
+  "I previously said a chit or paper is not resolvable at this resolution. A sheet held up in both hands IS clearly visible (clip 02, ~38s). A small folded chit probably is not, but that is a narrower claim than the one I made."
+ ],
+ "_real_events_the_detector_missed": [
+  "Clip 02, 50-62s: woman with head down over an object held low - phone-consistent, sustained ~12s, and matches the clip's own title.",
+  "Clip 02, 150-158s: man in camo turning to look back over his shoulder."
+ ],
+ "_confirmed_false_positives": [
+  "Clip 01, 88-118s: three hand_gesture findings in a window that is empty or shows people collecting belongings."
+ ],
+ "_context_that_changes_interpretation": "Clip 02 shows a staff member with a lanyard actively assisting candidates and papers being handled openly. This is registration or verification, not a sealed exam - so papers in hand are probably legitimate there. Whether the phone-consistent sequence is an offence depends on the rules in force at that moment, which the footage cannot show.",
+ "_adjudications": {
+  "_what_this_is": "Verdict on each SPECIFIC detection the detector raised, reached by re-extracting that frame from the source video at native 1280x720 and cropping to the bbox with padding. Separate from 'annotations', which record what is visible in the clip regardless of what the detector said. Needed because the annotations sample every 2s and do not cover every detection, and scoring an uncovered detection as wrong would be an assumption, not a measurement.",
+  "_scale_note": "bboxes in enriched_events.json are in 640x360 space; doubled to index native resolution.",
+  "verdicts": [
+   {
+    "clip": "01",
+    "type": "prohibited_object",
+    "atSec": 60.0,
+    "track": "Track-07",
+    "seen": "Seated bearded man, hand raised gripping the top edge of the desk partition. No object in the hand.",
+    "verdict": "false positive",
+    "confidence": "high"
+   },
+   {
+    "clip": "01",
+    "type": "hand_gesture",
+    "atSec": 60.2,
+    "track": "Track-07",
+    "seen": "Same moment as the 60.0s detection, 0.2s later. Seated man leaning toward a person in a dark shirt standing beside him - an interaction with staff, not signalling.",
+    "verdict": "false positive",
+    "confidence": "high",
+    "note": "Also a duplicate: the same instant is counted twice, once as prohibited_object and once as hand_gesture."
+   },
+   {
+    "clip": "01",
+    "type": "hand_gesture",
+    "atSec": 95.4,
+    "track": "Track-28",
+    "seen": "Woman in floral kurta WALKING down the aisle, arm raised to her own head. Not seated, not a candidate at a terminal.",
+    "verdict": "false positive",
+    "confidence": "high",
+    "note": "Walking subject. The head-turn detector rejects these via locomotionDuring(); hand_gesture has no such gate."
+   },
+   {
+    "clip": "01",
+    "type": "hand_gesture",
+    "atSec": 105.4,
+    "track": "Track-30",
+    "seen": "Two women standing in the aisle, one holding a white sheet of paper. Paper handling by staff, both standing.",
+    "verdict": "false positive",
+    "confidence": "high",
+    "note": "Walking/standing subject again."
+   },
+   {
+    "clip": "02",
+    "type": "hand_gesture",
+    "atSec": 50.8,
+    "track": "Track-06",
+    "seen": "Seated candidate, phone-consistent posture. Matches the 50-62s annotation.",
+    "verdict": "true positive",
+    "confidence": "medium"
+   },
+   {
+    "clip": "02",
+    "type": "hand_gesture",
+    "atSec": 73.8,
+    "track": "Track-36",
+    "seen": "Seated candidate holding an open booklet low in his lap while a staff member stands directly behind him.",
+    "verdict": "false positive",
+    "confidence": "low",
+    "note": "Ambiguous. Paper held below desk level would be worth review, but an invigilator is standing over him, so this reads as legitimate paper handling. Scored against the detector."
+   },
+   {
+    "clip": "02",
+    "type": "hand_gesture",
+    "atSec": 108.0,
+    "track": "Track-36",
+    "seen": "Same candidate, hand raised to his face holding a small light-coloured object. Cannot be identified at this resolution.",
+    "verdict": "ambiguous",
+    "confidence": "low",
+    "note": "Excluded from precision rather than guessed."
+   },
+   {
+    "clip": "02",
+    "type": "hand_gesture",
+    "atSec": 181.2,
+    "track": "Track-62",
+    "seen": "Seated candidate with both hands clasped at his mouth, paper flat on the desk. Resting/thinking posture.",
+    "verdict": "false positive",
+    "confidence": "high",
+    "note": "Same posture class already annotated as not-an-offence at 14-54s in the Seat No. 12 clip."
+   }
+  ]
+ },
+ "_root_cause_found": {
+  "finding": "detectHandGestures in m8_9_golang/pose_analysis.go fires on a SINGLE frame whose wrist sits above the shoulder, with no minimum duration and no locomotion gate.",
+  "contrast": "detectHeadTurns requires headTurnMinFrames=5 consecutive frames AND rejects the event when the subject travelled more than headTurnMaxLocomotion=2.0 shoulder-widths (pose_analysis.go:245, :282).",
+  "consequence": "Anyone walking past with an arm raised - adjusting hair, carrying paper - trips it. 3 of the 6 confirmed false positives are people walking in the aisle; a 4th is a static resting posture that a duration gate would not fix but a seated-posture check would.",
+  "status": "diagnosed, not yet fixed"
+ }
+}

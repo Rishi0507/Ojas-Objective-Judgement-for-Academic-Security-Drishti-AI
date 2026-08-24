@@ -7,8 +7,8 @@ import { ZERO_HASH, hashDocument, joinFields, sha256 } from './hash'
  * Two independent properties are being established, and keeping them separate
  * is what makes the design work:
  *
- *   Signature  - WHO asserted WHAT. Covers the statement only.
- *   Chain      - the ORDER entries were written in, and that none were
+ *   Signature - WHO asserted WHAT. Covers the statement only.
+ *   Chain     - the ORDER entries were written in, and that none were
  *                removed. Covers seq + prev_hash + statement hash.
  *
  * They are deliberately not merged. If the signature also covered the chain

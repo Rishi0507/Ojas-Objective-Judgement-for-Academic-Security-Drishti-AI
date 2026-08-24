@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Video, Activity, AlertTriangle, CheckCircle, Clock, Eye, Upload, Trash2, Archive, Play, ChevronRight, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import IntegrityStrip from './IntegrityStrip'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { JobStatus } from '@/lib/useUploadJob'
 import { PageSkeleton } from './Skeleton'
@@ -51,7 +52,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
       .then(res => res.json())
       .then(data => {
         // 404 ("No data available") comes back as { error: '...' } with a
-        // 200-parseable body — treat it as "no video yet", not a crash.
+        // 200-parseable body -  treat it as "no video yet", not a crash.
         setVideoData(data && !data.error ? data : null)
         setLoading(false)
       })
@@ -84,7 +85,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
       .catch(() => setLibrary([]))
   }
 
-  const selectVideo = async (jobId: string) => {
+  const selectVideo = async (jobId: string): Promise<boolean> => {
     setSwitching(jobId)
     try {
       const res = await fetch('/api/videos/select', {
@@ -99,9 +100,19 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
         loadVerdicts()
         loadLibrary()
       }
+      return res.ok
     } finally {
       setSwitching(null)
     }
+  }
+
+  // One action per row instead of View-then-Analyse. Selecting a video was
+  // never a destination of its own - it only set the pointer the analysis
+  // views read from - so the two buttons were one intent split across two
+  // clicks. Analyse now sets the pointer first when the row is not active.
+  const analyseVideo = async (v: { jobId: string; videoId?: string; isActive: boolean }) => {
+    if (!v.isActive && !(await selectVideo(v.jobId))) return
+    onVideoSelect(v.videoId ?? v.jobId)
   }
 
   // Prune discards optical flow and motion masks - 79% of a job's disk on this
@@ -141,7 +152,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
   }, [])
 
   // job/upload polling now lives in page.tsx (via useUploadJob) so it
-  // survives switching tabs — this just reacts to the prop when it flips
+  // survives switching tabs -  this just reacts to the prop when it flips
   // to "done" and refreshes with the newly processed video's results.
   useEffect(() => {
     if (job?.state === 'done') {
@@ -306,6 +317,8 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
         </div>
       </div>
 
+      <IntegrityStrip />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => {
           const Icon = stat.icon
@@ -343,7 +356,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Activity Timeline</h2>
-              <p className="text-sm text-muted-foreground">Peak motion over time · last activity at {video?.lastActivity ?? '—'}</p>
+              <p className="text-sm text-muted-foreground">Peak motion over time · last activity at {video?.lastActivity ?? ' - '}</p>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
@@ -412,7 +425,7 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
             {[
               { label: 'Processing Queue', value: '0/1', percent: 0 },
               { label: 'Segments Detected', value: totalEvents.toString(), percent: (totalEvents / 10) * 100 },
-              { label: 'Quality Score', value: videoData ? (videoData.quality_metrics.observability * 100).toFixed(0) + '%' : '—', percent: (videoData?.quality_metrics.observability ?? 0) * 100 },
+              { label: 'Quality Score', value: videoData ? (videoData.quality_metrics.observability * 100).toFixed(0) + '%' : ' - ', percent: (videoData?.quality_metrics.observability ?? 0) * 100 },
             ].map((item, i) => (
               <div key={i}>
                 <div className="flex justify-between text-sm mb-2">
@@ -466,14 +479,14 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                   )}
                 >
                   <div className="flex items-center gap-4">
-                    {/* The active video shows its own heatmap; the rest use a
-                        placeholder, since /api/heatmap only ever serves whatever
-                        is currently selected and would otherwise label every row
-                        with the same image. */}
+                    {/* Every finished video shows its own motion heatmap, scoped
+                        by ?job=. A row without one is still processing, so the
+                        placeholder now means "no result yet" rather than "not the
+                        selected video". */}
                     <div className="relative w-28 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
-                      {v.isActive && done ? (
+                      {done ? (
                         <img
-                          src="/api/heatmap"
+                          src={`/api/heatmap?job=${encodeURIComponent(v.jobId)}`}
                           alt=""
                           className="w-full h-full object-cover opacity-90 transition-transform duration-300 group-hover:scale-105"
                           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
@@ -533,21 +546,13 @@ export default function Dashboard({ onVideoSelect, job, onUploadFile }: Dashboar
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {!v.isActive && done && (
+                      {done && (
                         <button
-                          onClick={() => selectVideo(v.jobId)}
+                          onClick={() => analyseVideo(v)}
                           disabled={isSwitching}
-                          className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium transition-all hover:bg-accent active:scale-[0.98] disabled:opacity-50 disabled:cursor-wait"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-wait"
                         >
-                          {isSwitching ? 'Switching…' : 'View'}
-                        </button>
-                      )}
-                      {v.isActive && done && (
-                        <button
-                          onClick={() => onVideoSelect(v.videoId ?? v.jobId)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium transition-all hover:bg-primary/90 active:scale-[0.98]"
-                        >
-                          Analyse
+                          {isSwitching ? 'Opening…' : 'Analyse'}
                           <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={2.5} />
                         </button>
                       )}

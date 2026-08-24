@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     // Check if file exists
     if (!fs.existsSync(framePath)) {
       // Return original frame if annotated doesn't exist. Frame filenames
-      // follow `<videoID>__f<7-digit idx>__t<timestamp>.jpg` (Module 2) —
+      // follow `<videoID>__f<7-digit idx>__t<timestamp>.jpg` (Module 2) - 
       // match by substring instead of a glob dependency.
       const framesDir = path.join(process.cwd(), `pipeline_out/${pipelineDir}/frames`);
       const needle = `__f${frame.padStart(7, '0')}__`;

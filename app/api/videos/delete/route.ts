@@ -4,6 +4,7 @@ import path from 'path'
 import { appendEntry } from '@/lib/ledger/store'
 import { hashDocument } from '@/lib/ledger/hash'
 import { getCurrentPipelineDir } from '@/lib/currentVideo'
+import { INTERMEDIATE_DIRS } from '@/lib/intermediates'
 
 /**
  * Removes a processed job's media, in one of two degrees.
@@ -26,8 +27,7 @@ import { getCurrentPipelineDir } from '@/lib/currentVideo'
 
 const ROOT = process.cwd()
 
-/** Directories safe to discard after Module 7: written during the run, read by nothing after it. */
-const INTERMEDIATE_DIRS = ['flow', 'masks', 'cleaned_masks']
+
 
 function dirSizeMb(dir: string): number {
   let total = 0

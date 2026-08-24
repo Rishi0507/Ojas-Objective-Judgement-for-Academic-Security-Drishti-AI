@@ -6,15 +6,24 @@ import { assetETag, isFresh } from '@/lib/assetCache';
 
 export async function GET(request: Request) {
   try {
-    const heatmapPath = path.join(process.cwd(), 'pipeline_out', getCurrentPipelineDir(), 'events/heatmap.png');
-    
+    // ?job= serves one specific video's heatmap. Without it the URL is the
+    // same string for every video and can only mean "whatever is selected",
+    // which is why the library list could not show a thumbnail per row.
+    const jobId = new URL(request.url).searchParams.get('job');
+    if (jobId !== null && (jobId === '' || path.basename(jobId) !== jobId)) {
+      return NextResponse.json({ error: 'Invalid job id' }, { status: 400 });
+    }
+
+    const dir = jobId ?? getCurrentPipelineDir();
+    const heatmapPath = path.join(process.cwd(), 'pipeline_out', dir, 'events/heatmap.png');
+
     if (!fs.existsSync(heatmapPath)) {
       return NextResponse.json({ error: 'Heatmap not found' }, { status: 404 });
     }
-    
-    // Revalidate rather than blind-cache: this URL is identical for every
-    // video, so a plain max-age served the previous video's heatmap after the
-    // active video changed.
+
+    // Revalidate rather than blind-cache: the un-scoped URL is identical for
+    // every video, so a plain max-age served the previous video's heatmap
+    // after the active video changed.
     const etag = assetETag(heatmapPath);
     if (isFresh(request, etag)) {
       return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'no-cache' } });

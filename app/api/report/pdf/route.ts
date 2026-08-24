@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       headerTemplate: '<div></div>',
       footerTemplate:
         '<div style="width:100%;font-size:8px;color:#64748b;padding:0 12mm;display:flex;justify-content:space-between;">' +
-        '<span>OJAS &mdash; exam integrity report</span>' +
+        '<span>OJAS :  exam integrity report</span>' +
         '<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>',
     })
 

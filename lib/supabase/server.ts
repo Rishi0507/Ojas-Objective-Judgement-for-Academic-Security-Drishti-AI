@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
  * Supabase client for route handlers and server components.
  *
  * Reads the session from cookies, so it acts as the signed-in user and stays
- * subject to RLS — which is what you want for anything user-facing.
+ * subject to RLS -  which is what you want for anything user-facing.
  */
 export function createClient() {
   const cookieStore = cookies()

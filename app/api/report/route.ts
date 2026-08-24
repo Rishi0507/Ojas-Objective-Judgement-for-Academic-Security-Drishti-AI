@@ -4,6 +4,7 @@ import path from 'path'
 
 export const dynamic = 'force-dynamic'
 import { getCurrentPipelineDir } from '@/lib/currentVideo'
+import { offenceKey } from '@/lib/offenceKey'
 import { verifyChain } from '@/lib/ledger/chain'
 import { readChain, appendEntry } from '@/lib/ledger/store'
 import { hashDocument, sha256File } from '@/lib/ledger/hash'
@@ -44,10 +45,7 @@ import { buildBatch } from '@/lib/ledger/anchor'
 
 const ROOT = process.cwd()
 
-/** Matches offenceKey() in EventsList - verdicts are stored under this. */
-function offenceKey(o: any): string {
-  return `${o.trackId ?? 'none'}|${o.type}|${o.frameIdx}`
-}
+
 
 /**
  * What each detector actually measures, and where it fails.
@@ -125,7 +123,7 @@ async function buildReport(jobId: string, embed: boolean) {
   const findings: any[] = []
   for (const event of analysis.events ?? []) {
     for (const off of event.offences ?? []) {
-      const key = offenceKey(off)
+      const key = offenceKey(off, jobId)
       const verdict = verdicts[key] ?? null
 
       let evidence: any = null

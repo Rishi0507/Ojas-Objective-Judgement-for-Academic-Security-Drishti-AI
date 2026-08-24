@@ -23,7 +23,7 @@ export default function Home() {
   const [eventOrigin, setEventOrigin] = useState<'analysis' | 'events'>('events')
 
   // Lives here (not inside Dashboard) so switching tabs never interrupts
-  // polling or loses track of an in-progress upload — the pipeline itself
+  // polling or loses track of an in-progress upload -  the pipeline itself
   // runs server-side regardless, this just keeps the UI in sync with it
   // no matter which view is active.
   const { job, uploadError, uploadFile, dismissJob, dismissError, cancelJob } = useUploadJob(() => {})

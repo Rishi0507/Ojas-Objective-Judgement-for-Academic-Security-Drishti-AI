@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function GET() {
   try {
-    // public/api/events.json is the single "currently active video" pointer —
+    // public/api/events.json is the single "currently active video" pointer - 
     // both the initial demo seed and every completed upload (see
     // lib/pipelineJobs.ts) write here, so it always reflects the most
     // recently processed video.

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import { getCurrentPipelineDir } from '@/lib/currentVideo'
+import { offenceKey } from '@/lib/offenceKey'
 import { proposeThresholds, type ReviewedOffence, type Verdict } from '@/lib/calibration'
 
 /**
@@ -43,10 +44,7 @@ interface OffenceLike {
   confidence?: number
 }
 
-/** Same key the reviewer UI writes: `${trackId ?? 'none'}|${type}|${frameIdx}`. */
-function offenceKey(o: OffenceLike): string {
-  return `${o.trackId ?? 'none'}|${o.type}|${o.frameIdx}`
-}
+
 
 export async function GET() {
   try {
@@ -76,7 +74,7 @@ export async function GET() {
     let orphaned = 0
     for (const ev of events) {
       for (const off of (ev.offences ?? []) as OffenceLike[]) {
-        const verdict = verdicts[offenceKey(off)]
+        const verdict = verdicts[offenceKey(off, pipelineDir)]
         if (!verdict) continue
         if (typeof off.confidence !== 'number') {
           orphaned++

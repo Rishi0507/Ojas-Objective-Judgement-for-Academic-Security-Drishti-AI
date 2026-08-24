@@ -5,7 +5,7 @@ const ROOT = process.cwd()
 
 /**
  * Resolves the pipeline_out/<dir> for the currently active video (whatever
- * public/api/events.json currently points at — the original demo clip or
+ * public/api/events.json currently points at -  the original demo clip or
  * the most recently completed upload). Falls back to the bundled demo
  * clip's directory if the pointer field is missing (e.g. events.json
  * predates the pipeline_dir field being added).

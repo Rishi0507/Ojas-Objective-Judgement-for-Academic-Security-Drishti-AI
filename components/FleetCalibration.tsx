@@ -210,7 +210,7 @@ export default function FleetCalibration() {
         </div>
         <p className="text-muted-foreground mt-1 max-w-3xl">
           Every camera remembers what its room normally looks like. Before an exam, we compare
-          today&apos;s view against that memory — so a camera that has been knocked or a light
+          today&apos;s view against that memory -  so a camera that has been knocked or a light
           that has failed is caught now, not weeks later when someone disputes the footage.
         </p>
       </div>

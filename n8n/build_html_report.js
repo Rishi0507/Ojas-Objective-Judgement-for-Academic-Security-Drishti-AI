@@ -64,7 +64,7 @@ const confirmed = (r.confirmed || []).map(f => {
       ${groundedHtml ? `<div style="margin-top:10px; font-size:13px; color:#374151;"><strong>Grounded Explanations:</strong><ul style="margin:4px 0 0 18px; padding:0;">${groundedHtml}</ul></div>` : ''}
       ${imgHtml}
       <div style="margin-top:10px; font-size:12px; color:#6b7280; border-top:1px dashed #fca5a5; padding-top:6px;">
-        Reviewed by operator — Verdict: <strong>${esc(f.review ? f.review.verdict : 'N/A')}</strong>
+        Reviewed by operator -  Verdict: <strong>${esc(f.review ? f.review.verdict : 'N/A')}</strong>
       </div>
     </div>
   `;
@@ -81,7 +81,7 @@ const awaitingRows = (r.awaitingReview || []).map(f => {
   }
   const region = f.regionContext ? esc(f.regionContext.interpretation) : '';
   const clip = f.clipVerification
-    ? `CLIP: ${esc(f.clipVerification.verdict)}${f.clipVerification.readAs ? ' &mdash; read as &quot;' + esc(f.clipVerification.readAs) + '&quot;' : ''}`
+    ? `CLIP: ${esc(f.clipVerification.verdict)}${f.clipVerification.readAs ? ' :  read as &quot;' + esc(f.clipVerification.readAs) + '&quot;' : ''}`
     : '';
   return `
   <div style="border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:12px;">
@@ -150,7 +150,7 @@ const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Exam Integrity Report — ${esc(prov.sourceFilename || 'Drishti AI')}</title>
+  <title>Exam Integrity Report -  ${esc(prov.sourceFilename || 'Drishti AI')}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 24px; }
     .container { max-width: 900px; margin: 0 auto; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); padding: 32px; }

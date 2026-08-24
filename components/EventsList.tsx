@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Search, Clock, ListFilter, AlertTriangle, X, Undo2, Check, ShieldAlert, ArrowRight, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { offenceKey } from '@/lib/offenceKey'
+import IntegrityStrip from './IntegrityStrip'
 import { PageSkeleton } from './Skeleton'
 
 interface OffenceData {
@@ -24,10 +26,13 @@ interface OffenceData {
     margin?: number
     reason?: string
   }
-  // Feature 10.4 — the grid cell this finding sits in, and how far that cell
+  // Feature 10.4 -  the grid cell this finding sits in, and how far that cell
   // departed from its own learned baseline at this moment.
   region?: string
   regionZ?: number
+  /** Present when a reviewer added this rather than the detector finding it. */
+  source?: string
+  sourceNote?: string
   /** Set by clip_verify.py --filter when CLIP contradicted the finding. */
   suppressed?: boolean
   suppressedBy?: string
@@ -52,6 +57,8 @@ interface VideoData {
   video_id: string
   event_count: number
   events: SegmentData[]
+  /** Present only on the aggregated response from /api/offences. */
+  videos?: { jobId: string; filename: string; offenceCount: number; isActive: boolean }[]
 }
 
 interface EventsListProps {
@@ -84,7 +91,7 @@ function formatTime(seconds: number): string {
 }
 
 /**
- * Feature 10.4 — how unusual this finding's own part of the frame was.
+ * Feature 10.4 -  how unusual this finding's own part of the frame was.
  *
  * Rendered for both outcomes, because both carry information. A high z-score
  * says the scene corroborates the geometry. A zero says the detector fired
@@ -133,6 +140,27 @@ function RegionBadge({ offence }: { offence: { region?: string; regionZ?: number
 }
 
 /**
+ * Provenance badge for findings that did not come from the detector.
+ *
+ * A reviewer can add what they see at native resolution, where a small object is
+ * legible and the 640px pipeline frame has only a few pixels of it. Those are
+ * real observations and belong in the record - but they must not read as model
+ * output, because the difference matters the moment anyone asks what the system
+ * itself found.
+ */
+function SourceBadge({ offence }: { offence: { source?: string; sourceNote?: string } }) {
+  if (offence.source !== 'manual_review') return null
+  return (
+    <span
+      title={offence.sourceNote ?? 'Added by a reviewer, not detected by the pipeline.'}
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono border bg-indigo-50 text-indigo-700 border-indigo-200"
+    >
+      added on review
+    </span>
+  )
+}
+
+/**
  * CLIP's second opinion, rendered as a badge.
  *
  * Deliberately not shown for "supported": a green tick on most of the list
@@ -173,8 +201,9 @@ function ClipBadge({ offence }: { offence: OffenceData }) {
 type SortKey = 'time' | 'confidence' | 'type'
 type Verdict = 'dismissed' | 'confirmed'
 
-function offenceKey(o: OffenceData): string {
-  return `${o.trackId ?? 'none'}|${o.type}|${o.frameIdx}`
+/** Local wrapper: every row knows the video it came from, so scope by it. */
+function rowKey(offence: OffenceData, segment: SegmentData): string {
+  return offenceKey(offence, (segment as any).sourceJobId)
 }
 
 function getGroundedExplanation(type: string, label: string, trackId?: string, confidence?: number) {
@@ -233,9 +262,15 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   const [showDismissed, setShowDismissed] = useState(false)
   const [showSuppressed, setShowSuppressed] = useState(false)
   const [selected, setSelected] = useState<OffenceRow | null>(null)
+  const [videoFilter, setVideoFilter] = useState<string>('all')
 
   useEffect(() => {
-    fetch('/api/video')
+    // /api/offences walks pipeline_out/ rather than following the active-video
+    // pointer, so this list is the whole backlog across every processed video.
+    // A reviewer works through findings, not through videos, and having the
+    // list silently show only whichever video happened to be selected meant
+    // findings on the others were never seen.
+    fetch('/api/offences')
       .then((res) => res.json())
       .then((data) => {
         setVideoData(data && !data.error ? data : null)
@@ -280,6 +315,11 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
     return rows
   }, [videoData])
 
+  const sourceVideos = useMemo(
+    () => Array.from(new Set(everyRow.map((r) => (r.segment as any).sourceVideo).filter(Boolean) as string[])).sort(),
+    [everyRow]
+  )
+
   const suppressedCount = useMemo(
     () => everyRow.filter((r) => r.offence.suppressed).length,
     [everyRow]
@@ -310,22 +350,24 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
   }, [allRows])
 
   const dismissedCount = useMemo(
-    () => allRows.filter((r) => verdicts[offenceKey(r.offence)] === 'dismissed').length,
+    () => allRows.filter((r) => verdicts[rowKey(r.offence, r.segment)] === 'dismissed').length,
     [allRows, verdicts]
   )
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
     const filtered = allRows
-      .filter((r) => showDismissed || verdicts[offenceKey(r.offence)] !== 'dismissed')
+      .filter((r) => showDismissed || verdicts[rowKey(r.offence, r.segment)] !== 'dismissed')
       .filter((r) => typeFilter === 'all' || r.offence.type === typeFilter)
       .filter((r) => trackFilter === 'all' || r.offence.trackId === trackFilter)
+      .filter((r) => videoFilter === 'all' || (r.segment as any).sourceVideo === videoFilter)
       .filter(
         (r) =>
           !q ||
           r.offence.label.toLowerCase().includes(q) ||
           r.offence.type.toLowerCase().includes(q) ||
-          (r.offence.trackId ?? '').toLowerCase().includes(q)
+          (r.offence.trackId ?? '').toLowerCase().includes(q) ||
+          ((r.segment as any).sourceVideo ?? '').toLowerCase().includes(q)
       )
 
     return filtered.sort((a, b) => {
@@ -333,7 +375,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
       if (sortKey === 'type') return a.offence.type.localeCompare(b.offence.type) || a.offence.startSec - b.offence.startSec
       return a.offence.startSec - b.offence.startSec
     })
-  }, [allRows, typeFilter, trackFilter, query, sortKey, verdicts, showDismissed])
+  }, [allRows, typeFilter, trackFilter, videoFilter, query, sortKey, verdicts, showDismissed])
 
   if (loading) {
     <PageSkeleton variant="list" label="Loading findings" />
@@ -357,6 +399,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         <p className="text-muted-foreground">
           {allRows.length} findings across {videoData.event_count} activity{' '}
           {videoData.event_count === 1 ? 'segment' : 'segments'}
+          {sourceVideos.length > 1 && ` in ${sourceVideos.length} videos`}
           {suppressedCount > 0 && (
             <>
               {' · '}
@@ -371,6 +414,8 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
           )}
         </p>
       </div>
+
+      <IntegrityStrip />
 
       {/* Filters Bar */}
       <div className="card p-4 space-y-4">
@@ -416,6 +461,43 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
             </button>
           ))}
         </div>
+
+        {/* Only worth showing once more than one video has been processed;
+            with a single video every row would carry the same chip. */}
+        {sourceVideos.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground mr-1">
+              <ListFilter className="w-3.5 h-3.5" strokeWidth={2} />
+              Video
+            </span>
+            <button
+              onClick={() => setVideoFilter('all')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                videoFilter === 'all'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background border-border hover:bg-accent'
+              )}
+            >
+              All videos ({sourceVideos.length})
+            </button>
+            {sourceVideos.map((v) => (
+              <button
+                key={v}
+                onClick={() => setVideoFilter(v)}
+                title={v}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors max-w-[16rem] truncate',
+                  videoFilter === v
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-border hover:bg-accent'
+                )}
+              >
+                {v.replace(/\.(mkv|mp4|avi)$/i, '')}
+              </button>
+            ))}
+          </div>
+        )}
 
         {tracks.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
@@ -471,9 +553,15 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
         {rows.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">No offences match these filters.</div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          // A single column, not a grid. Each row is built as a row - thumbnail
+          // left, verdict pinned right, a status spine down the edge - and at
+          // four columns each was ~250px wide, so the type badge and the region
+          // badge wrapped mid-word and the label truncated to nothing. A dense
+          // vertical list is also what a reviewer wants: one finding per line,
+          // scannable straight down.
+          <div className="flex flex-col gap-2.5">
             {rows.map(({ offence, segment }, i) => {
-              const key = offenceKey(offence)
+              const key = rowKey(offence, segment)
               const isDismissed = verdicts[key] === 'dismissed'
               const isConfirmed = verdicts[key] === 'confirmed'
               return (
@@ -523,8 +611,8 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
 
                   {/* Offence Label / Name */}
                   <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold border', styleFor(offence.type).cls)}>
+                    <div className="flex items-center gap-2 flex-nowrap">
+                      <span className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap', styleFor(offence.type).cls)}>
                         {styleFor(offence.type).label}
                       </span>
                       {offence.trackId && (
@@ -538,12 +626,24 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                       </span>
                     </div>
 
-                    <div className="font-medium text-sm text-foreground line-clamp-2 leading-snug">
+                    <div className="font-medium text-sm text-foreground truncate leading-snug">
                       {offence.label}
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden">
+                      {/* Which video this came from. The list spans every
+                          processed video, so without this a reviewer cannot
+                          tell two clips' findings apart. */}
+                      {sourceVideos.length > 1 && (segment as any).sourceVideo && (
+                        <span
+                          title={(segment as any).sourceVideo}
+                          className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground max-w-[10rem] truncate flex-shrink-0"
+                        >
+                          {String((segment as any).sourceVideo).replace(/\.(mkv|mp4|avi)$/i, '')}
+                        </span>
+                      )}
                       <ClipBadge offence={offence} />
+                      <SourceBadge offence={offence} />
                       <RegionBadge offence={offence} />
                     </div>
                   </div>
@@ -577,7 +677,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
       {/* POPUP MODAL CARD with Grounded Explanations & Detailed Information */}
       {selected && (() => {
         const { offence, segment } = selected
-        const key = offenceKey(offence)
+        const key = rowKey(offence, segment)
         const verdict = verdicts[key]
         const style = styleFor(offence.type)
         const grounded = getGroundedExplanation(offence.type, offence.label, offence.trackId, offence.confidence)
@@ -605,6 +705,7 @@ export default function EventsList({ onEventSelect }: EventsListProps) {
                       {(offence.confidence * 100).toFixed(0)}% confidence
                     </span>
                     <ClipBadge offence={offence} />
+                      <SourceBadge offence={offence} />
                     <RegionBadge offence={offence} />
                   </div>
                   <h3 className="text-xl font-bold leading-snug text-foreground">{offence.label}</h3>

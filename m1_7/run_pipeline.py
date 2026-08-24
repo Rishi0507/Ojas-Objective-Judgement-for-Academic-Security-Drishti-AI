@@ -331,9 +331,21 @@ def main():
                          help="Directory to write all pipeline outputs into.")
     parser.add_argument("--target-fps", type=float, default=5.0,
                          help="Module 2 sampling rate. Default 5.0 fps.")
-    parser.add_argument("--start-thresh", type=float, default=0.20,
+    # Lowered from 0.20, which sat ABOVE the median motion of a quiet exam
+    # hall - so more than half of a calm video never entered an event, and
+    # detection never looked at it. Measured S_final medians: 0.089 and 0.083
+    # on two seated-candidate clips, 0.224 on a busy one. A threshold belongs
+    # above the noise floor, not above typical activity.
+    #
+    # Coverage measured on an 88s clip: 0.20 -> 42%, 0.14 -> 47%,
+    # 0.10 -> 63%, 0.07 -> 78%. 0.10 roughly halves the unexamined portion
+    # while keeping detection cost bounded - every extra covered second is a
+    # second of YOLO inference, which is already the slowest stage.
+    parser.add_argument("--start-thresh", type=float, default=0.10,
                          help="Module 7 hysteresis start threshold. Default 0.20.")
-    parser.add_argument("--continue-thresh", type=float, default=0.10,
+    # Held at half the start threshold, as before: the gap is what stops one
+    # incident fragmenting every time the score grazes the line.
+    parser.add_argument("--continue-thresh", type=float, default=0.05,
                          help="Module 7 hysteresis continue threshold. Default 0.10.")
     parser.add_argument("--min-duration", type=float, default=1.5,
                          help="Module 7 minimum event duration (sec). Default 1.5.")

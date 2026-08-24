@@ -4,6 +4,8 @@ import { spawn } from 'child_process'
 import { createVideoRow, updateVideoStatus, syncJobResults } from './supabase/sync'
 import { appendEntry } from './ledger/store'
 import { sha256File } from './ledger/hash'
+import { hashDocument } from './ledger/hash'
+import { INTERMEDIATE_DIRS } from './intermediates'
 
 export type JobState = 'queued' | 'processing' | 'done' | 'error'
 
@@ -114,7 +116,7 @@ export function cancelJob(jobId: string) {
 }
 
 /**
- * Polls a progress.json file (written by run_pipeline.py after each stage —
+ * Polls a progress.json file (written by run_pipeline.py after each stage - 
  * see STAGE_WEIGHTS there) while a long-running command executes, and maps
  * its 0-100 into [scaleMin, scaleMax] of the overall job's percent so the
  * UI shows real incremental progress instead of a static message for
@@ -138,7 +140,7 @@ function watchProgressFile(
         })
       }
     } catch {
-      // progress.json may not exist yet, or be mid-write — ignore and retry
+      // progress.json may not exist yet, or be mid-write -  ignore and retry
     }
   }, 1500)
 }
@@ -186,7 +188,7 @@ const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
 /**
  * Generates a browser-playable MP4 proxy of the source video. Real CCTV
  * footage in this project is frequently old MPEG-4 Part 2 ("DivX"-style
- * codec, ffprobe reports it as "mpeg4") — no modern browser's <video>
+ * codec, ffprobe reports it as "mpeg4") -  no modern browser's <video>
  * element can decode that natively, and no Content-Type/container fix can
  * work around a genuinely unsupported codec, only a real transcode can.
  * If the source is already H.264 (+ AAC/no audio), this is just a fast
@@ -199,7 +201,7 @@ const BROWSER_SAFE_AUDIO_CODECS = new Set(['aac', 'mp3'])
  * Timestamp of the first keyframe, or 0 if the file already opens on one.
  *
  * CCTV exports are frequently cut mid-stream, so the file's first frames are
- * predicted frames with no reference to predict from — ffmpeg says as much
+ * predicted frames with no reference to predict from -  ffmpeg says as much
  * ("first frame is no keyframe") and the decoder emits flat grey. Measured on
  * this footage: 03.CCTV is undecodable until 0.483s, Seat No. 12 until 1.040s,
  * while 01.Candidate opens cleanly at 0.000s.
@@ -260,7 +262,7 @@ async function generatePlaybackProxy(
 
   // The proxy's clock now starts `offset` seconds into the source. Events are
   // timed against the source, so anything cutting from the proxy has to
-  // subtract this — see generateEventClips.
+  // subtract this -  see generateEventClips.
   return { path: outPath, offset: keyframeAt }
 }
 
@@ -269,7 +271,7 @@ async function generatePlaybackProxy(
  * (where the Go backend produced annotated frames) a second clip with the
  * detection boxes burned in.
  *
- * Without this, the UI could only play the *whole* video and seek — which is
+ * Without this, the UI could only play the *whole* video and seek -  which is
  * why event playback looked like unrelated footage: an investigator needs the
  * few seconds where the offence happens, not a 5-minute recording to scrub.
  *
@@ -302,7 +304,7 @@ async function generateEventClips(
 
   // Annotated frames are named by SOURCE frame index, so converting an
   // event's time window into frame numbers needs the video's real frame
-  // rate — not an assumed one.
+  // rate -  not an assumed one.
   const fps = Number(enriched?.metadata?.fps) || 0
 
   for (const ev of events) {
@@ -382,7 +384,7 @@ async function generateEventClips(
             '-y', '-f', 'concat', '-safe', '0', '-i', listPath,
             // -fps_mode, not the old -vsync: that alias was deprecated in
             // ffmpeg 5 and REMOVED in ffmpeg 9, where it hard-fails the whole
-            // command with "Unrecognized option 'vsync'" — so every annotated
+            // command with "Unrecognized option 'vsync'" -  so every annotated
             // clip silently failed to render on a current ffmpeg.
             // CFR, not VFR. The concat demuxer expresses each frame's hold as a
             // PTS gap, and a VFR encode drops most of the trailing hold on the
@@ -414,7 +416,7 @@ async function generateEventClips(
 }
 
 // Serializes video processing to one job at a time. The pipeline is CPU-bound
-// (Python motion detection, Go+YOLO detection) — running two concurrently on
+// (Python motion detection, Go+YOLO detection) -  running two concurrently on
 // the same machine doesn't parallelize useful work, it just makes both slower
 // via cache thrashing and context-switching (measured: module 6 went from
 // 68s solo to 108s when a second upload was processing at the same time).
@@ -440,6 +442,17 @@ async function processUploadedVideo(
 ) {
   const outDir = path.join(PIPELINE_OUT_DIR, jobId)
 
+  // Cancelling a job that had not started yet did nothing: the queue is a
+  // promise chain, and cancelJob only marks status and kills processes that
+  // exist. A job cancelled while still queued therefore ran anyway, minutes
+  // later, against the user's explicit instruction. Check the mark here, at
+  // the point the job actually begins.
+  const existing = readStatus(jobId)
+  if (existing?.state === 'error') {
+    console.log(`[queue] ${jobId}: cancelled before it started - skipping`)
+    return
+  }
+
   try {
     // Non-blocking: a Supabase failure must not stop analysis that would
     // otherwise succeed, so every sync call here is awaited but never thrown.
@@ -450,7 +463,7 @@ async function processUploadedVideo(
       percent: 0,
     })
 
-    // Kicked off alongside the Python pipeline (not after it) — see
+    // Kicked off alongside the Python pipeline (not after it) -  see
     // generatePlaybackProxy's docstring. Non-fatal if it fails (e.g. ffmpeg
     // missing): falls back to streaming the raw source, same as before.
     const proxyPromise = generatePlaybackProxy(videoPath, outDir, jobId).catch((err) => {
@@ -527,7 +540,7 @@ async function processUploadedVideo(
     const enriched = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'))
 
     // Header/video_path inside `enriched` is whatever absolute path was on the
-    // machine that ran Module 1 — not reliably resolvable as a URL. Stamp on
+    // machine that ran Module 1 -  not reliably resolvable as a URL. Stamp on
     // the two app-relative pointers that the heatmap/annotated/stream routes
     // and the frontend actually need to locate this specific video's assets.
     // Prefer the transcoded playback proxy (guaranteed browser-compatible
@@ -584,6 +597,14 @@ async function processUploadedVideo(
       } catch (err) {
         console.error(`[supabase] ${jobId}: mirroring results failed -`, err)
       }
+      // Last, so the evidence has been hashed and mirrored before anything is
+      // discarded. Nothing above reads the intermediates, but ordering it this
+      // way means a failure earlier leaves the job fully intact.
+      try {
+        await pruneIntermediates(jobId, outDir)
+      } catch (err) {
+        console.error(`[prune] ${jobId}: failed -`, err)
+      }
     })()
   } catch (err: any) {
     writeStatus(jobId, {
@@ -612,6 +633,68 @@ async function processUploadedVideo(
  * silent - an audit trail that hides its own gaps is worse than none.
  */
 const MAX_SNAPSHOT_ENTRIES = 50
+
+
+/**
+ * Discards a finished job's intermediates.
+ *
+ * Runs by default because the alternative is a laptop that fills up: optical
+ * flow alone is ~79% of a job's disk and nothing reads it after Module 7. Set
+ * KEEP_INTERMEDIATES=1 to switch off - the only reason to want them is
+ * re-running Modules 4, 5 or 6 without redoing Module 3, which is a threshold
+ * tuning workflow rather than anything the app does.
+ *
+ * Recorded in the ledger before the files go, for the same reason a manual
+ * prune is: the audit trail should not be silent about data being removed,
+ * even routine data.
+ */
+async function pruneIntermediates(jobId: string, outDir: string): Promise<void> {
+  if (process.env.KEEP_INTERMEDIATES === '1') return
+
+  let freedMb = 0
+  const present: string[] = []
+  for (const sub of INTERMEDIATE_DIRS) {
+    const dir = path.join(outDir, sub)
+    if (!fs.existsSync(dir)) continue
+    present.push(sub)
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        freedMb += fs.statSync(path.join(dir, f)).size / 1e6
+      }
+    } catch {
+      // size is advisory; a failure here must not stop the prune
+    }
+  }
+  if (present.length === 0) return
+
+  const record = { jobId, mode: 'prune', removed: present, sizeMbFreed: Math.round(freedMb * 10) / 10 }
+  const entry = await appendEntry({
+    kind: 'media_pruned',
+    subject: `pipeline_out/${jobId}`,
+    jobId,
+    payloadHash: hashDocument(record),
+    payload: record,
+  })
+  if (!entry) {
+    console.error(`[prune] ${jobId}: not recorded in the ledger, so nothing was removed`)
+    return
+  }
+
+  for (const sub of present) {
+    try {
+      fs.rmSync(path.join(outDir, sub), { recursive: true, force: true })
+    } catch (err) {
+      console.error(`[prune] ${jobId}: could not remove ${sub} -`, err)
+    }
+  }
+  // The cached size is now wrong; drop it so the next listing recomputes.
+  try {
+    fs.rmSync(path.join(outDir, '.summary.json'), { force: true })
+  } catch {
+    /* not cached yet */
+  }
+  console.log(`[prune] ${jobId}: freed ${record.sizeMbFreed}MB (${present.join(', ')})`)
+}
 
 async function recordArtifacts(
   jobId: string,
