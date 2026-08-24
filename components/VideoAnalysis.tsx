@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronRight, ArrowLeft, Activity, Phone, Users, TrendingUp, Filter, Download, Eye, Clock, Zap, Target, Network } from 'lucide-react'
+import { ChevronRight, ArrowLeft, Activity, Phone, Users, TrendingUp, FileText, Loader2, Eye, Clock, Zap, Target, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PageSkeleton } from './Skeleton'
 
 /**
- * Feature 10.1 — investigator profiles. Labels/blurbs live here rather than
+ * Feature 10.1 -  investigator profiles. Labels/blurbs live here rather than
  * being derived from the API's snake_case names, so the UI reads properly
  * without the backend having to carry presentation strings.
  */
@@ -19,7 +19,7 @@ const INVESTIGATION_PROFILES: { id: string; label: string; blurb: string }[] = [
   { id: 'all_unusual', label: 'All unusual', blurb: 'Balanced across every signal' },
 ]
 
-/** Feature 10.2 — a cluster of events linked into one story. */
+/** Feature 10.2 -  a cluster of events linked into one story. */
 interface EvidenceGroup {
   group_id: string
   event_ids: string[]
@@ -102,6 +102,30 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
   const [rankedEvents, setRankedEvents] = useState<EventData[] | null>(null)
   const [groups, setGroups] = useState<EvidenceGroup[]>([])
   const [ranking, setRanking] = useState(false)
+  const [issuing, setIssuing] = useState(false)
+  const [issueResult, setIssueResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  // Same dispatch the ledger view uses: n8n renders the document, records its
+  // hash in the custody chain and mails it. Named for what it does - the old
+  // "Export" label with a download icon promised a file that never arrived in
+  // the browser, and the button was not wired to anything at all.
+  const issueReport = async () => {
+    setIssuing(true)
+    setIssueResult(null)
+    try {
+      const res = await fetch('/api/report/dispatch', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      setIssueResult(
+        res.ok
+          ? { ok: true, message: 'Report issued, recorded in the ledger and sent to the workflow.' }
+          : { ok: false, message: data.error ?? `Failed (${res.status})` }
+      )
+    } catch (e) {
+      setIssueResult({ ok: false, message: String(e) })
+    } finally {
+      setIssuing(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/video')
@@ -208,15 +232,28 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="px-4 py-2 card card-hover flex items-center gap-2">
-            <Filter className="w-4 h-4" strokeWidth={2} />
-            Filters
+        {/* The "Filters" button that used to sit here did nothing - the
+            investigation profiles directly below are the actual filter
+            control, so it was a second, dead entry point to them. */}
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={issueReport}
+            disabled={issuing}
+            title="Renders the incident report, records its hash in the custody ledger, and mails it"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {issuing ? (
+              <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+            ) : (
+              <FileText className="w-4 h-4" strokeWidth={2} />
+            )}
+            {issuing ? 'Issuing…' : 'Issue report'}
           </button>
-          <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
-            <Download className="w-4 h-4" strokeWidth={2} />
-            Export
-          </button>
+          {issueResult && (
+            <p className={cn('text-xs max-w-xs text-right', issueResult.ok ? 'text-emerald-600' : 'text-red-600')}>
+              {issueResult.message}
+            </p>
+          )}
         </div>
       </div>
 
@@ -418,7 +455,7 @@ export default function VideoAnalysis({ videoId, onEventSelect, onBack }: VideoA
         </div>
         <p className="text-sm text-muted-foreground mb-4">
           Re-rank the same events for what you are actually looking for. Nothing is
-          re-analysed — only the weighting of existing signals changes.
+          re-analysed -  only the weighting of existing signals changes.
         </p>
         <div className="flex flex-wrap gap-2">
           {INVESTIGATION_PROFILES.map((prof) => (

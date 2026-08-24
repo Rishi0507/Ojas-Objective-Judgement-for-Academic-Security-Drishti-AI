@@ -5,7 +5,7 @@ import { Sun, Moon } from 'lucide-react'
 
 /**
  * Light / dark switch. Light is the default, so "dark" is the only state
- * persisted — an absent key means light, which keeps the pre-paint script in
+ * persisted -  an absent key means light, which keeps the pre-paint script in
  * layout.tsx to a single class addition.
  */
 export default function ThemeToggle() {
@@ -23,7 +23,7 @@ export default function ThemeToggle() {
       if (next) localStorage.setItem('drishti-theme', 'dark')
       else localStorage.removeItem('drishti-theme')
     } catch {
-      // Private browsing — the toggle still works for this session.
+      // Private browsing -  the toggle still works for this session.
     }
   }
 

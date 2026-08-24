@@ -32,10 +32,10 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
         <button 
           onClick={() => onViewChange('dashboard')}
           className="w-10 h-10 bg-paper-white rounded-[16px] flex items-center justify-center overflow-hidden transition-transform hover:scale-105"
-          title="OJAS — Objective Judgement for Academic Sincerity"
+          title="OJAS -  Objective Judgement for Academic Sincerity"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/ojas-logo.png" alt="OJAS" className="w-8 h-8 object-contain" />
+          <img src="/ojas-logo.png" alt="OJAS" width={32} height={32} style={{ width: '32px', height: '32px', objectFit: 'contain' }} className="w-8 h-8 object-contain flex-shrink-0" />
         </button>
       </div>
 

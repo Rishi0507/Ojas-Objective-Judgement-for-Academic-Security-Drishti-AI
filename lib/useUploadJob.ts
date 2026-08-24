@@ -9,7 +9,7 @@ const STORAGE_KEY = 'drishti_active_job_id'
 
 /**
  * Tracks the current video-processing job. Lives at the page.tsx level (not
- * inside Dashboard) so switching tabs — Analysis, Events, wherever — never
+ * inside Dashboard) so switching tabs -  Analysis, Events, wherever -  never
  * unmounts it and never interrupts polling. The underlying pipeline process
  * runs server-side regardless; this only makes sure the UI doesn't lose
  * track of it. Also persists the job id to localStorage so a full page

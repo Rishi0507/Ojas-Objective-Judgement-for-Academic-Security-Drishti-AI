@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
  *
  * The ledger's whole purpose is to let someone check a claim rather than
  * accept it, so this screen is built to show the check being performed and its
- * result — including when the result is bad. Two things follow from that:
+ * result -  including when the result is bad. Two things follow from that:
  *
  *   * The limitations are rendered as prominently as the guarantees. An
  *     unanchored chain can be rebuilt from genesis by whoever runs the
@@ -78,7 +78,7 @@ const KIND_STYLES: Record<string, string> = {
  * default visual noise.
  */
 function shortHash(h: string | null): string {
-  if (!h) return '—'
+  if (!h) return ' - '
   return `${h.slice(0, 2)}${'•'.repeat(10)}`
 }
 

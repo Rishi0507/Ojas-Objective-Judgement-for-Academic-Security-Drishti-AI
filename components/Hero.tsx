@@ -108,7 +108,7 @@ export default function Hero({ onLaunch }: HeroProps) {
         <header className="flex items-start justify-between gap-6">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/ojas-logo.png" alt="OJAS" className="w-14 h-14 object-contain" />
+            <img src="/ojas-logo.png" alt="OJAS" width={56} height={56} style={{ width: '56px', height: '56px', objectFit: 'contain' }} className="w-14 h-14 object-contain flex-shrink-0" />
             <div>
               <div className="font-condensed text-2xl font-bold uppercase tracking-tight leading-none text-carbon-black">
                 OJAS
@@ -256,7 +256,7 @@ export default function Hero({ onLaunch }: HeroProps) {
           </div>
 
           <h2 className="font-condensed text-4xl md:text-6xl font-bold text-paper-white uppercase leading-[0.9] tracking-tight">
-            THE SYSTEM FINDS MOMENTS WORTH LOOKING AT &mdash; A PERSON DECIDES WHAT THEY MEAN
+            THE SYSTEM FINDS MOMENTS WORTH LOOKING AT :  A PERSON DECIDES WHAT THEY MEAN
           </h2>
 
           <p className="text-body text-smoke max-w-2xl font-normal leading-relaxed">

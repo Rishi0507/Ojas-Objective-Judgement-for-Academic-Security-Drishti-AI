@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
  *
  * This is the system's only monospace surface: Roboto Mono 11px uppercase with
  * bullet separators, on a tone one step beyond the canvas. The register is the
- * point — machine data reads as a terminal log, distinct from the condensed
+ * point -  machine data reads as a terminal log, distinct from the condensed
  * brand voice used everywhere else. A pipeline status line belongs here rather
  * than in a card, which would present it as brand communication.
  */

@@ -42,10 +42,28 @@ const (
 	// define the baseline it is meant to deviate from.
 	headTurnMinBaselineSamples = 4
 
-	// A turn must persist across this many sampled frames to count. At 5fps
-	// that is ~0.4s, which separates a deliberate look from detector jitter
-	// or a head bobbing while writing.
-	headTurnMinFrames = 2
+	// A turn must persist across this many sampled frames to count.
+	//
+	// Was 2, documented as "~0.4s at 5fps" - which was wrong arithmetic: two
+	// frames span one interval, so 0.2s. That is not a head turn by any
+	// definition, and it showed: a seated subject 44px wide, facing their own
+	// monitor, was reported for a 0.20s "sustained" turn produced entirely by
+	// pose jitter.
+	//
+	// 5 frames spans four intervals - about 0.8s at an effective 5fps, 1.0s at
+	// the 4fps a 5fps request actually yields against 8fps source. A deliberate
+	// look at a neighbour's screen lasts at least that; jitter does not persist
+	// across five consecutive samples in one direction.
+	headTurnMinFrames = 5
+
+	// Below this shoulder width in pixels, head yaw cannot be measured.
+	//
+	// Yaw is (dLeft-dRight)/(dLeft+dRight), so shoulder width is effectively the
+	// denominator: at 20px shoulders a 2px nose-keypoint wobble is 0.1 of yaw,
+	// and a few of those in the same direction clear the 0.35 threshold without
+	// the head having moved. At 40px the same wobble is 0.05. Set from the
+	// measured distribution - see the [head_turn] shoulder log.
+	headTurnMinShoulderPx = 0.0
 
 	// Wrist above the shoulder line reads as a raised hand / signal.
 	// Requiring clear separation avoids firing on someone resting a hand.
@@ -216,6 +234,14 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 		}
 
 		if consecutive >= headTurnMinFrames {
+			if sh, ok := medianShoulderPx(poses); ok {
+				log.Printf("[head_turn] %s @%.2fs shoulders=%.1fpx frames=%d", track.TrackID, startTime, sh, consecutive)
+				if sh < headTurnMinShoulderPx {
+					consecutive = 0
+					continue
+				}
+			}
+
 			if moved, ok := locomotionDuring(poses, 0, 1<<30); ok && moved > headTurnMaxLocomotion {
 				log.Printf("[head_turn] %s @%.2fs dropped: subject travelled %.1f shoulder-widths during this event, so the turn measures locomotion",
 					track.TrackID, startTime, moved)
@@ -245,6 +271,13 @@ func detectHeadTurns(track PersonTrack, poses []TrackedPose) []Offence {
 	// A turn still in progress when the event ends.
 	if consecutive >= headTurnMinFrames {
 		last := poses[len(poses)-1]
+
+		if sh, ok := medianShoulderPx(poses); ok {
+			log.Printf("[head_turn] %s @%.2fs shoulders=%.1fpx frames=%d", track.TrackID, startTime, sh, consecutive)
+			if sh < headTurnMinShoulderPx {
+				return offences
+			}
+		}
 
 		if moved, ok := locomotionDuring(poses, 0, 1<<30); ok && moved > headTurnMaxLocomotion {
 			log.Printf("[head_turn] %s @%.2fs dropped: subject travelled %.1f shoulder-widths during this event, so the turn measures locomotion",
@@ -319,6 +352,26 @@ var headTurnMaxLocomotion = 2.0
 //
 // Returns the span of the subject's box centre over the window, in shoulder
 // widths, and false when there is too little to measure.
+
+// medianShoulderPx is the subject's typical shoulder width in pixels across the
+// frames where both shoulders were confidently detected. It is the denominator
+// of the yaw calculation, so it sets how much a one-pixel keypoint wobble is
+// worth: small subjects produce large apparent yaw from noise alone.
+func medianShoulderPx(poses []TrackedPose) (float64, bool) {
+	var widths []float64
+	for _, tp := range poses {
+		lSho, okL := joint(tp.Pose, "left_shoulder")
+		rSho, okR := joint(tp.Pose, "right_shoulder")
+		if okL && okR {
+			widths = append(widths, math.Abs(lSho.X-rSho.X))
+		}
+	}
+	if len(widths) == 0 {
+		return 0, false
+	}
+	return medianFloat(widths), true
+}
+
 func locomotionDuring(poses []TrackedPose, startFrame, endFrame int) (float64, bool) {
 	var cx, cy, widths []float64
 
@@ -488,9 +541,18 @@ func analyseMicroMotions(tracks []PersonTrack, posesByTrack map[string][]Tracked
 	var offences []Offence
 	for _, track := range tracks {
 		poses := posesByTrack[track.TrackID]
-		if len(poses) < headTurnMinFrames {
+		if len(poses) == 0 {
 			continue
 		}
+		// Each detector applies its own minimum, and they are not the same:
+		// a head turn needs a baseline plus a sustained run, while a raised
+		// wrist is visible in a single frame.
+		//
+		// This guard used to be `< headTurnMinFrames`, which silently coupled
+		// them. Raising that constant from 2 to 5 then stopped hand gestures
+		// being detected at all on anyone tracked for fewer than five frames -
+		// people at the edge of a shot, or briefly occluded, vanished from
+		// detection entirely rather than just from head-turn detection.
 		offences = append(offences, detectHeadTurns(track, poses)...)
 		offences = append(offences, detectHandGestures(track, poses)...)
 	}

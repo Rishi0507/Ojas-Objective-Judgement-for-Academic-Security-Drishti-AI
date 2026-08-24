@@ -46,12 +46,12 @@ export function sha256File(filePath: string): Promise<string> {
  *
  * Inputs that cannot round-trip are rejected rather than silently coerced:
  *
- *   - `undefined` is dropped by JSON.stringify inside objects but becomes
+ *  - `undefined` is dropped by JSON.stringify inside objects but becomes
  *     `null` inside arrays, so the same value hashes two different ways
  *     depending on where it sits.
- *   - `NaN` and `Infinity` both serialise to `null`, collapsing distinct
+ *  - `NaN` and `Infinity` both serialise to `null`, collapsing distinct
  *     values into one digest.
- *   - Numbers beyond Number.MAX_SAFE_INTEGER have already lost precision by
+ *  - Numbers beyond Number.MAX_SAFE_INTEGER have already lost precision by
  *     the time they arrive, so the digest would attest to the wrong value.
  *
  * Rejecting is right here even though it is unfriendly: a ledger that quietly

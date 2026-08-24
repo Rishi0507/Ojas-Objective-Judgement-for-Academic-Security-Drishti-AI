@@ -1,5 +1,5 @@
 /**
- * Feature 10.1 — definition-conditioned investigation.
+ * Feature 10.1 -  definition-conditioned investigation.
  *
  * Different investigators care about different things: one is looking for
  * phone activity, another for seat-swapping. Rather than ship one fixed
@@ -7,7 +7,7 @@
  * caller asks for.
  *
  * This is deliberately a pure re-weighting of signals the Go backend already
- * emits per event — no detection is re-run, nothing is recomputed, and the
+ * emits per event -  no detection is re-run, nothing is recomputed, and the
  * underlying events are never mutated. That is what makes it cheap enough to
  * apply per request.
  */
@@ -36,7 +36,7 @@ export function isProfileName(v: string | null): v is ProfileName {
 /**
  * Maps an API event onto the signal names the profile weights refer to.
  *
- * `camera_quality` is observability, i.e. higher is better — a clean, readable
+ * `camera_quality` is observability, i.e. higher is better -  a clean, readable
  * clip scores higher. `inverse_q_observability` is its complement, so the
  * camera_disturbance profile surfaces exactly the clips the others penalise.
  * Every signal is clamped to 0-1 so one malformed field cannot dominate a

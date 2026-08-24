@@ -44,7 +44,7 @@ export default function Header({ onNotificationClick }: HeaderProps) {
       */}
       <div className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ojas-logo.png" alt="" className="w-11 h-11 object-contain" />
+        <img src="/ojas-logo.png" alt="OJAS" width={44} height={44} style={{ width: '44px', height: '44px', objectFit: 'contain' }} className="w-11 h-11 object-contain flex-shrink-0" />
         <div className="leading-none">
           <div className="font-condensed text-3xl font-bold tracking-tight text-carbon-black uppercase">
             OJAS

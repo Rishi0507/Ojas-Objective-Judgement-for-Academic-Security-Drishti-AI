@@ -10,8 +10,8 @@ import { hashDocument } from '@/lib/ledger/hash'
 /**
  * Reviewer verdicts on individual offences.
  *
- * Detection is heuristic — a wrist entering a neighbour's box is evidence of
- * reaching, not proof of a hand-off — so the person reviewing needs to be able
+ * Detection is heuristic -  a wrist entering a neighbour's box is evidence of
+ * reaching, not proof of a hand-off -  so the person reviewing needs to be able
  * to throw out what the system got wrong. Verdicts are stored per video
  * alongside its pipeline output rather than in the browser, so a dismissal
  * survives a reload and is visible to whoever reviews next.
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     const verdicts = readReview()
     if (verdict === null) {
-      delete verdicts[key] // undo — back to unreviewed
+      delete verdicts[key] // undo -  back to unreviewed
     } else {
       verdicts[key] = verdict
     }

@@ -1,12 +1,12 @@
 /**
- * Feature 10.2 — evidence graph.
+ * Feature 10.2 -  evidence graph.
  *
  * Four isolated clips are weaker evidence than one framed pattern: "this
  * person had 4 related incidents around the same desk". Events are linked
  * into a similarity graph and grouped by connected component, so related
  * incidents can be presented together.
  *
- * Reads only fields the Go backend already emits (trackIds, roi, start) —
+ * Reads only fields the Go backend already emits (trackIds, roi, start) - 
  * nothing is recomputed and no event is mutated.
  */
 
@@ -52,7 +52,7 @@ interface Link {
 /**
  * Decides whether two events belong to the same story, and says why.
  *
- * A shared person track links them outright — the same individual recurring is
+ * A shared person track links them outright -  the same individual recurring is
  * the strongest signal available, regardless of when it happened. Otherwise
  * they must be both close in time AND overlapping in space; either alone is
  * too weak, since a fixed camera makes almost every pair of events overlap
@@ -86,7 +86,7 @@ function linkBetween(
  * Implemented as union-find rather than pulling in networkx's JS equivalent:
  * connected components are the only graph operation needed here, and the event
  * count per video is small enough that the pairwise scan is trivial.
- * Single-event components are dropped — a "group" of one is just the event.
+ * Single-event components are dropped -  a "group" of one is just the event.
  */
 export function buildEvidenceGraph(
   events: any[],

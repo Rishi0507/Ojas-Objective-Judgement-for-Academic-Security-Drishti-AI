@@ -8,7 +8,7 @@
  *
  * The honest part is the refusal. A threshold only helps if the score actually
  * separates the two verdicts, so separability is measured first (AUC) and a
- * proposal is withheld when it is weak — that case means the detector is
+ * proposal is withheld when it is weak -  that case means the detector is
  * measuring the wrong thing, and moving its threshold would trade real
  * detections for noise reduction rather than removing a distinguishable error.
  * Reporting "no threshold helps here" is the useful answer, not a failure.
@@ -61,11 +61,11 @@ export const MIN_SEPARABILITY = 0.65
 
 /**
  * Probability that a randomly chosen confirmed finding scores above a randomly
- * chosen dismissed one — the Mann-Whitney U statistic, equal to ROC AUC.
+ * chosen dismissed one -  the Mann-Whitney U statistic, equal to ROC AUC.
  *
  * Computed by direct pair comparison rather than rank sums: the sample sizes
  * here are tiny, and ties (identical confidences across verdicts) carry real
- * meaning — they are exactly the case where the score cannot separate — so
+ * meaning -  they are exactly the case where the score cannot separate -  so
  * they are counted as half rather than broken arbitrarily.
  */
 export function separability(confirmed: number[], dismissed: number[]): number {
@@ -85,7 +85,7 @@ export function separability(confirmed: number[], dismissed: number[]): number {
  * rate), which weights keeping confirmations and dropping dismissals equally.
  *
  * Candidates are midpoints between observed values, so the cut never sits
- * exactly on a sample — landing on one makes the outcome depend on whether the
+ * exactly on a sample -  landing on one makes the outcome depend on whether the
  * comparison is >= or >, which is not a property of the data.
  */
 export function bestCut(confirmed: number[], dismissed: number[]): { cut: number; j: number } {

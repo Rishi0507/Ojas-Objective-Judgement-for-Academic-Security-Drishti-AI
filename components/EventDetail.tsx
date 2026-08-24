@@ -116,7 +116,7 @@ interface EventData {
   explanations?: ExplanationData[]
 }
 
-/** Feature 10.3 — Module 6's quality signals as readable bands. */
+/** Feature 10.3 -  Module 6's quality signals as readable bands. */
 interface UncertaintyReasons {
   camera_shake: string
   blur: string
@@ -124,7 +124,7 @@ interface UncertaintyReasons {
   occlusion: string
 }
 
-/** Feature 10.6 — one claim bound to the evidence it rests on. */
+/** Feature 10.6 -  one claim bound to the evidence it rests on. */
 interface ExplanationData {
   event_id: string
   claim: string
@@ -152,7 +152,7 @@ interface OffenceData {
   durationSec?: number
   count?: number
   snapshot?: string
-  // Feature 10.4 — the grid cell this offence sits in, and how far that cell
+  // Feature 10.4 -  the grid cell this offence sits in, and how far that cell
   // departed from its own learned baseline at this moment.
   region?: string
   regionZ?: number
@@ -164,6 +164,9 @@ interface OffenceData {
     margin?: number
     reason?: string
   }
+  /** Present when a reviewer added this rather than the detector finding it. */
+  source?: string
+  sourceNote?: string
   /** Set by clip_verify.py --filter when CLIP contradicted the finding. */
   suppressed?: boolean
   suppressedBy?: string
@@ -171,7 +174,7 @@ interface OffenceData {
 }
 
 /**
- * Feature 10.4 — how unusual this finding's own part of the frame was.
+ * Feature 10.4 -  how unusual this finding's own part of the frame was.
  *
  * Rendered for both outcomes, because both carry information. A high z-score
  * says the scene corroborates the geometry. A zero says the detector fired
@@ -215,6 +218,27 @@ function RegionBadge({ offence }: { offence: { region?: string; regionZ?: number
       className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono border bg-muted text-muted-foreground border-border"
     >
       {offence.region} · region normal
+    </span>
+  )
+}
+
+/**
+ * Provenance badge for findings that did not come from the detector.
+ *
+ * A reviewer can add what they see at native resolution, where a small object is
+ * legible and the 640px pipeline frame has only a few pixels of it. Those are
+ * real observations and belong in the record - but they must not read as model
+ * output, because the difference matters the moment anyone asks what the system
+ * itself found.
+ */
+function SourceBadge({ offence }: { offence: { source?: string; sourceNote?: string } }) {
+  if (offence.source !== 'manual_review') return null
+  return (
+    <span
+      title={offence.sourceNote ?? 'Added by a reviewer, not detected by the pipeline.'}
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono border bg-indigo-50 text-indigo-700 border-indigo-200"
+    >
+      added on review
     </span>
   )
 }
@@ -296,6 +320,25 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [selectedOffence, setSelectedOffence] = useState<OffenceData | null>(null)
   const [showSuppressed, setShowSuppressed] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Escape closes whatever is on top, and the page behind stops scrolling
+  // while it is open - otherwise the wheel moves the list underneath instead
+  // of the evidence the reviewer is looking at.
+  useEffect(() => {
+    if (!selectedOffence && !lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (lightbox) setLightbox(null)
+      else setSelectedOffence(null)
+    }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [selectedOffence, lightbox])
 
   useEffect(() => {
     // Load event data
@@ -397,7 +440,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     return ((displayTime - eventData.start) / eventData.duration) * 100
   }
 
-  // Integer-second time for display — updates once per second
+  // Integer-second time for display -  updates once per second
   const displayTime = Math.floor(currentTime)
 
   /** Seeks the player to an absolute time in the source recording. */
@@ -425,7 +468,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
     canvas.height = video.videoHeight
     const ctx = canvas.getContext('2d')
     if (!ctx || !canvas.width || !canvas.height) {
-      setSnapshotNote('Snapshot failed — video not ready yet')
+      setSnapshotNote('Snapshot failed -  video not ready yet')
       return
     }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
@@ -585,7 +628,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
               )}
               {!usingEventClip && (
                 <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                  No extracted clip for this segment — playing the full recording. Re-process the
+                  No extracted clip for this segment -  playing the full recording. Re-process the
                   video to generate per-segment clips.
                 </div>
               )}
@@ -891,6 +934,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <ClipBadge offence={off} />
+                      <SourceBadge offence={off} />
                           <RegionBadge offence={off} />
                         </div>
                       </div>
@@ -917,15 +961,19 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
 
           return (
             <div
-              className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 overflow-y-auto"
+              className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 sm:p-6"
               onClick={() => setSelectedOffence(null)}
             >
+              {/* The panel is capped at the viewport and scrolls its own body.
+                  Letting it grow to its content instead pushed the evidence and
+                  the actions off the bottom of the screen with nothing to
+                  scroll, so a reviewer could not reach the Jump button. */}
               <div
-                className="bg-card border border-border rounded-2xl max-w-2xl w-full my-auto overflow-hidden shadow-2xl space-y-0"
+                className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Modal Header */}
-                <div className="flex items-start justify-between gap-4 p-5 border-b border-border bg-muted/20">
+                {/* Modal Header - stays put while the body scrolls */}
+                <div className="flex-shrink-0 flex items-start justify-between gap-4 p-5 border-b border-border bg-muted/20">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className={cn('px-2.5 py-0.5 rounded-full text-xs font-bold border', style.cls)}>
@@ -938,9 +986,12 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                         {(off.confidence * 100).toFixed(0)}% confidence
                       </span>
                       <ClipBadge offence={off} />
+                      <SourceBadge offence={off} />
                       <RegionBadge offence={off} />
                     </div>
-                    <h3 className="text-xl font-bold leading-snug text-foreground">{off.label}</h3>
+                    <h3 className="font-sans normal-case tracking-normal text-lg font-semibold leading-snug text-foreground">
+                      {off.label}
+                    </h3>
 
                     {/* The caption CLIP preferred, quoted rather than summarised.
                         A reviewer overruling the filter needs to see what the
@@ -953,7 +1004,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                         {typeof off.clip.topScore === 'number' && (
                           <span className="font-mono"> ({off.clip.topScore.toFixed(2)})</span>
                         )}
-                        {off.suppressed && ' — hidden from the default list on that basis.'}
+                        {off.suppressed && ' -  hidden from the default list on that basis.'}
                       </p>
                     )}
                   </div>
@@ -966,13 +1017,17 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                   </button>
                 </div>
 
+                {/* min-h-0 is what actually lets this shrink inside the flex
+                    column; without it the child's content sets a floor and the
+                    panel overflows again. */}
+                <div className="flex-1 min-h-0 overflow-y-auto">
                 {/* Evidence Snapshot Image Preview */}
                 {off.snapshot ? (
                   <div className="bg-black/90 relative flex items-center justify-center">
                     <img
                       src={`/api/snapshot?path=${encodeURIComponent(off.snapshot)}`}
                       alt={off.label}
-                      className="w-full object-contain max-h-[40vh]"
+                      className="max-w-full w-auto object-contain max-h-[38vh]"
                     />
                   </div>
                 ) : (
@@ -1000,7 +1055,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                             {/* What this claim is actually anchored to. Shown
                                 rather than assumed: "spatial" means there is a
                                 box but no frame to display, "temporal" means the
-                                reverse — a reviewer should weigh those
+                                reverse -  a reviewer should weigh those
                                 differently from a fully evidenced finding. */}
                             {matchedEx?.grounding && matchedEx.grounding !== 'full' && (
                               <span
@@ -1102,6 +1157,7 @@ export default function EventDetail({ eventId, onBack }: EventDetailProps) {
                       <span>Jump to video timestamp ({formatTime(off.startSec)})</span>
                     </button>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
