@@ -491,16 +491,3 @@ evaluation/                 score.py + ground_truth.json - honest detector metri
 n8n/                        Report delivery workflow
 supabase/migrations/        Schema + ledger append-only constraints
 ```
-
----
-
-## Known limitations (stated, not hidden)
-
-- **Detector precision/recall is early-stage** (§7): this is a working
-  pipeline with honest metrics, not a claim of production-grade accuracy.
-- **`detectHandGestures` lacks the locomotion gate and minimum-duration
-  filter** that `detectHeadTurns` has: diagnosed, not yet fixed
-  (`evaluation/ground_truth.json` → `_root_cause_found`).
-- **`object_exchange` is a proximity heuristic**, explicitly not a verified
-  hand-to-hand observation, treated as lower-confidence evidence in the UI.
-- **No facial recognition or identity mapping**: by design, not by gap.
