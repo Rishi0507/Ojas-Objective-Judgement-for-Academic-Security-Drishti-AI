@@ -1,4 +1,4 @@
-# DrishtiAI — Product & Technical Reference
+# DrishtiAI: Product & Technical Reference
 
 Offline video analytics for exam-hall integrity. Built for PS2 (DrishtiAI), targeted at
 CBT operators running exams across many centres.
@@ -6,8 +6,8 @@ CBT operators running exams across many centres.
 > **Positioning, stated first because it constrains everything below:**
 > an *investigation support tool*, not an automatic cheating detector.
 > The system ranks and evidences; a human decides. Every design choice
-> that follows — the abstentions, the uncertainty bands, the refusal to
-> auto-tune — follows from that sentence.
+> that follows (the abstentions, the uncertainty bands, the refusal to
+> auto-tune) follows from that sentence.
 
 All figures marked **[M]** are measured on this build. Figures marked **[P]** are
 projections and are labelled as such.
@@ -20,7 +20,7 @@ projections and are labelled as such.
 
 An invigilator watches ~40 candidates. A reviewer watching recordings afterwards watches
 one screen. At 800 centres × 4 cameras × 3 hours that is **9,600 camera-hours per exam
-session** — roughly **400 days of continuous viewing** for one person. Nobody watches it.
+session**, roughly **400 days of continuous viewing** for one person. Nobody watches it.
 So the product is not "detect cheating"; it is **decide what the few available reviewer-hours
 should be spent on**, and evidence that decision well enough to survive an appeal.
 
@@ -45,26 +45,26 @@ S_final = S_evidence × Q_observability
 
 Motion evidence is discounted by how trustworthy the footage was at that moment. A strong
 signal from a shaking, blurry, badly-lit camera scores below a moderate signal from a clean
-one. **[M]** On the reference clip, `Q_observability` ranges **0.60–0.86** across four events — a
+one. **[M]** On the reference clip, `Q_observability` ranges **0.60-0.86** across four events, a
 1.42× spread. Its effect is visible in the ranking: event-1 leads on raw motion (0.66) but its
 poor observability (0.60) pulls it to 0.40, while event-4 at 0.57 motion and 0.63 observability
-lands at 0.36 — the gap narrows from 0.09 to 0.04 once trustworthiness is priced in.
+lands at 0.36. The gap narrows from 0.09 to 0.04 once trustworthiness is priced in.
 
 `Q_observability = 1 − mean(shake_penalty, blur_penalty, brightness_jump_penalty)`,
 each normalised per-video by 5th/95th percentile.
 
-### Reference run — measured end to end **[M]**
+### Reference run: measured end to end **[M]**
 
 | | |
 |---|---|
 | Source | 143.1 s CCTV, 640×480, 8 fps, exam hall, ~6 candidates |
 | Frames sampled | 573 (≈4 fps effective) |
 | Events segmented | 4 |
-| Findings | 18 — 7 hand gesture, 6 head turn, 3 motion anomaly, 1 prohibited object, 1 hand proximity |
+| Findings | 18: 7 hand gesture, 6 head turn, 3 motion anomaly, 1 prohibited object, 1 hand proximity |
 | Grounded explanations | 22 |
 | Evidence stills | 214 |
 | Clips generated | 6 (4 plain + 2 annotated) |
-| Prohibited object | `book 0.49` — verified by eye on actual papers |
+| Prohibited object | `book 0.49`, verified by eye on actual papers |
 
 ---
 
@@ -73,7 +73,7 @@ each normalised per-video by 5th/95th percentile.
 ### Architecture
 
 ```
-video ──► Python (Modules 1–7) ──► events.json ──► Go (Modules 8–9) ──► enriched_events.json
+video ──► Python (Modules 1-7) ──► events.json ──► Go (Modules 8-9) ──► enriched_events.json
              motion · ROI · quality           persons · objects · pose        │
              segmentation · clips             offences · explanations         │
                                                                               ▼
@@ -87,8 +87,8 @@ video ──► Python (Modules 1–7) ──► events.json ──► Go (Modul
 
 | Layer | Language | Reason |
 |---|---|---|
-| Modules 1–7 | Python | OpenCV/NumPy are the reference implementations for classical CV |
-| Modules 8–9 | Go | Long-running detection over thousands of frames; static binary, predictable memory, trivial deployment to 800 sites |
+| Modules 1-7 | Python | OpenCV/NumPy are the reference implementations for classical CV |
+| Modules 8-9 | Go | Long-running detection over thousands of frames; static binary, predictable memory, trivial deployment to 800 sites |
 | API + UI | TypeScript / Next.js | One language across API routes and React; server components remove a separate API server |
 | Inference | Python subprocess | Ultralytics is Python-only; Go drives it over a JSON-line protocol on stdin/stdout |
 
@@ -96,18 +96,18 @@ video ──► Python (Modules 1–7) ──► events.json ──► Go (Modul
 
 | Concern | Choice | Version / size |
 |---|---|---|
-| CV primitives | OpenCV, NumPy | — |
+| CV primitives | OpenCV, NumPy | - |
 | Detection | YOLOv8n (COCO) | 6.5 MB **[M]** |
 | Pose | YOLOv8n-pose (17 COCO keypoints) | 6.8 MB **[M]** |
 | Semantic check | CLIP ViT-B/32 | ~600 MB, local, deterministic |
-| Tracking | ByteTrack (BoTSORT available) | — |
-| Backend | Go 1.21, CGO-free static binary | — |
-| App | Next.js 14 (App Router), React 18, Tailwind | — |
-| Data | Supabase — Postgres + private Storage buckets | — |
-| Auth | Google OAuth via Supabase, RLS per user | — |
+| Tracking | ByteTrack (BoTSORT available) | - |
+| Backend | Go 1.21, CGO-free static binary | - |
+| App | Next.js 14 (App Router), React 18, Tailwind | - |
+| Data | Supabase, Postgres + private Storage buckets | - |
+| Auth | Google OAuth via Supabase, RLS per user | - |
 | Automation | n8n (self-hosted) | See §4 |
 
-**Codebase [M]:** ~18,600 lines — TypeScript 8,942 · Python 5,527 · Go 4,161.
+**Codebase [M]:** ~18,600 lines, TypeScript 8,942 · Python 5,527 · Go 4,161.
 
 ### Design decisions worth defending
 
@@ -173,10 +173,10 @@ at an optimistic 10%-flagged case:
 The remaining gap is closed by horizontal scale, not algorithmic work: processing is
 embarrassingly parallel per camera, and the Go binary is static with no runtime dependencies.
 
-### Per-centre calibration — why one threshold cannot serve 800 halls
+### Per-centre calibration: why one threshold cannot serve 800 halls
 
 **[M]** Within a *single* frame of the reference footage, per-region motion baselines span
-**σ = 0.001 to σ = 1.52 — a 1,500× range**. A doorway and a back wall in the same room cannot
+**σ = 0.001 to σ = 1.52, a 1,500× range**. A doorway and a back wall in the same room cannot
 share a threshold, let alone 800 different rooms.
 
 Each camera therefore learns its own normal across sessions, and new sessions are compared
@@ -184,7 +184,7 @@ against it. **[M]** 12 regions tracked, 200 anomalous region-frames out of 573.
 
 **Drift verdicts:** `ready` · `room looks different` · `camera moved` · `needs re-setup` · `still learning`.
 Distinguishing "camera moved" from "room changed" requires ≥50% of regions shifting **and**
-≥3 regions corroborating — one cell moving on a coarse grid is not evidence the frame shifted.
+≥3 regions corroborating: one cell moving on a coarse grid is not evidence the frame shifted.
 
 **[M]** Fleet view tested at **3,201 cameras**: API responds in **186 ms**; storage is
 **4.5 MB** for 3,200 profiles; UI capped at 30 centres / 100 rows
@@ -201,24 +201,24 @@ Per camera-hour: ~4 MB playback proxy + ~2 MB clips + ~1 MB stills ≈ **7 MB**.
 
 ---
 
-## 4. n8n Automation — Reports & Email
+## 4. n8n Automation: Reports & Email
 
 n8n is the operations layer: everything that must happen *on a schedule* or *in reaction to*
 a pipeline result, without a human in the loop.
 
-### Workflow A — Nightly investigation report
+### Workflow A: Nightly investigation report
 
 **Trigger:** Schedule, 22:00 daily (after exam sessions close).
 
 | # | Node | Configuration |
 |---|---|---|
 | 1 | Schedule Trigger | Cron `0 22 * * *` |
-| 2 | HTTP Request | `GET {APP}/api/video` — active videos + event counts |
-| 3 | HTTP Request | `GET {APP}/api/events?mode=all_unusual` — findings ranked |
-| 4 | HTTP Request | `GET {APP}/api/calibration` — threshold proposals |
+| 2 | HTTP Request | `GET {APP}/api/video`: active videos + event counts |
+| 3 | HTTP Request | `GET {APP}/api/events?mode=all_unusual`: findings ranked |
+| 4 | HTTP Request | `GET {APP}/api/calibration`: threshold proposals |
 | 5 | Code (JS) | Aggregate: totals by type, confirmed/dismissed split, top-5 by score |
 | 6 | IF | `findings > 0` → continue; else → send "clean session" summary |
-| 7 | HTML | Render report — summary table, top findings with evidence links |
+| 7 | HTML | Render report, summary table, top findings with evidence links |
 | 8 | Convert to File | HTML → PDF |
 | 9 | Supabase | Insert row into `reports` (custody ledger entry) |
 | 10 | Gmail / SMTP | Email to reviewer distribution list, PDF attached |
@@ -227,7 +227,7 @@ a pipeline result, without a human in the loop.
 deep link; cameras needing attention; any threshold proposals; explicit
 *"N findings unreviewed"* count.
 
-### Workflow B — Camera health alert (pre-exam)
+### Workflow B: Camera health alert (pre-exam)
 
 **Trigger:** Schedule, 07:00 on exam days.
 
@@ -242,34 +242,34 @@ deep link; cameras needing attention; any threshold proposals; explicit
 | 7 | Slack / Teams | Aggregate summary to ops channel |
 
 **[M]** On the seeded fleet this routes **394 cameras across ~300 centres** into per-centre
-emails — the difference between one unreadable 394-row alert and 300 actionable two-line ones.
+emails: the difference between one unreadable 394-row alert and 300 actionable two-line ones.
 
-### Workflow C — Processing-complete notification
+### Workflow C: Processing-complete notification
 
 **Trigger:** Webhook, called by `pipelineJobs.ts` on job completion.
 
 | # | Node | Configuration |
 |---|---|---|
-| 1 | Webhook | `POST /webhook/job-complete` — `{jobId, eventCount, findings}` |
+| 1 | Webhook | `POST /webhook/job-complete`, `{jobId, eventCount, findings}` |
 | 2 | IF | High-priority findings present? |
 | 3 | Gmail / SMTP | Immediate notice with direct link to the segment |
 | 4 | Supabase | Append to custody ledger |
 
-### Workflow D — Weekly calibration digest
+### Workflow D: Weekly calibration digest
 
 **Trigger:** Schedule, Monday 09:00.
 Pulls `/api/calibration`, emails any detector whose verdicts now justify a threshold change,
-including the evidence (separability, sample count, expected effect). **Proposals only** —
+including the evidence (separability, sample count, expected effect). **Proposals only**:
 the email asks a human to approve a commit; n8n never edits thresholds.
 
 ### Why n8n rather than cron scripts
 
-Visual workflows are auditable by non-engineers — an exam operations manager can see exactly
+Visual workflows are auditable by non-engineers; an exam operations manager can see exactly
 what triggers an email and to whom, which matters when the emails concern disciplinary
 evidence. Retries, error branches and credential storage come built in.
 
 **Security note:** n8n workflows execute actions. The instance driving this holds an API key
-scoped to read endpoints plus report insertion — not the Supabase service role.
+scoped to read endpoints plus report insertion, not the Supabase service role.
 
 ---
 
@@ -282,7 +282,7 @@ on commodity hardware at 800 sites, and every score is explainable to a discipli
 A neural motion model would be faster and unauditable.
 
 **Abstention over coverage.**
-The system deliberately says "cannot judge" — CLIP on crops below the size threshold, threshold
+The system deliberately says "cannot judge": CLIP on crops below the size threshold, threshold
 proposals below separability 0.65, drift on grid mismatch. This lowers headline recall and
 raises trust: an evidence tool that is confidently wrong once loses more than one that is
 silent occasionally.
@@ -290,7 +290,7 @@ silent occasionally.
 **Propose, never auto-apply.**
 Thresholds could self-tune from reviewer feedback. Keeping a human in that loop costs
 adaptation speed and buys a system whose behaviour on any date is reconstructable from git
-history — a hard requirement when findings are contested months later.
+history, which is a hard requirement when findings are contested months later.
 
 **Filesystem-first, database-second.**
 Adds a sync layer and a class of "local ahead of remote" states. In exchange, a centre with
@@ -300,7 +300,7 @@ to a network partition.
 **Per-video normalisation over global thresholds.**
 Every score is normalised against that video's own distribution, so results are not directly
 comparable between videos without the profile. That is the price of working across 800 halls
-with different cameras, lighting and geometry — and the fleet profiles restore comparability
+with different cameras, lighting and geometry; the fleet profiles restore comparability
 where it matters.
 
 **Private storage with signed URLs.**
@@ -308,8 +308,8 @@ Slower than public CDN delivery and requires URL refresh. This is identifiable f
 minors in some jurisdictions; a leaked path must not be a leaked recording.
 
 **Anonymised IDs only.**
-Refusing cross-video re-identification loses the ability to link a person across sessions —
-genuinely useful for detecting organised, repeated behaviour. It is refused anyway, because
+Refusing cross-video re-identification loses the ability to link a person across sessions,
+which is genuinely useful for detecting organised, repeated behaviour. It is refused anyway, because
 building the capability creates the risk regardless of policy.
 
 ---
@@ -329,7 +329,7 @@ Ordered by argumentative value. Each entry states the data source so nothing is 
 | 7 | **Findings by type** | Bar | `enriched_events.json` | 7 gesture, 6 head turn, 3 motion, 1 object, 1 proximity |
 | 8 | **Coarse-scan coverage** | Timeline strip, flagged vs skipped | `quick_scan.py --json` | 63% flagged, 37% skipped, scan in 1.7 s |
 | 9 | **False-proposal risk vs sample size** | Line, log-y | Computed table (n=4→16.7%, n=10→0.4%) | Why the calibration agent refuses below 10 samples |
-| 10 | **Threshold separability** | Two overlapping histograms | `/api/calibration` | Confirmed vs dismissed confidence; shows when a threshold can help — and when it cannot |
+| 10 | **Threshold separability** | Two overlapping histograms | `/api/calibration` | Confirmed vs dismissed confidence; shows when a threshold can help, and when it cannot |
 | 11 | **System architecture** | Block diagram | §2 | Three-language pipeline, where data crosses boundaries |
 | 12 | **n8n workflow** | Node graph screenshot | n8n canvas | Automation is real, not aspirational |
 
@@ -337,7 +337,7 @@ Ordered by argumentative value. Each entry states the data source so nothing is 
 Grounded Explanations panel; Uncertainty tags showing `unavailable`; Camera Health drill-down
 with "What to do"; the *not comparable* refusal.
 
-**Deliberately excluded:** any accuracy/precision/recall chart — see §7.
+**Deliberately excluded:** any accuracy/precision/recall chart. See §7.
 
 ---
 
@@ -347,29 +347,29 @@ Stating this before a judge asks is worth more than being caught by it.
 
 | Claim | Status |
 |---|---|
-| Real YOLO detection, no mock | **Verified** — boxes inspected on real footage |
-| Clip/frame time sync | **Verified** — within 1 frame (0.083 s @ 12 fps) |
-| Region baselines differ per region | **Verified** — 1,521× σ range |
-| Threshold agent maths | **Verified** — 16 unit tests incl. edge cases |
-| Fleet drift maths | **Verified** — 14 unit tests |
-| Grounded-explanation schema | **Verified** — enforced by Go test |
-| Coarse scan saves work | **Verified** — 37% on reference footage |
+| Real YOLO detection, no mock | **Verified**: boxes inspected on real footage |
+| Clip/frame time sync | **Verified**: within 1 frame (0.083 s @ 12 fps) |
+| Region baselines differ per region | **Verified**: 1,521× σ range |
+| Threshold agent maths | **Verified**: 16 unit tests incl. edge cases |
+| Fleet drift maths | **Verified**: 14 unit tests |
+| Grounded-explanation schema | **Verified**: enforced by Go test |
+| Coarse scan saves work | **Verified**: 37% on reference footage |
 | Fleet at 3,200 cameras | **View verified**; only 2 profiles are real |
-| Supabase persistence | **Code complete, never exercised** — 0 rows written |
+| Supabase persistence | **Code complete, never exercised**: 0 rows written |
 | **Detection accuracy** | **Not measured.** No ground truth, no Top-5 hit rate |
 | **False-positive rate** | **Not measured.** Both test videos are positives; no normal footage |
 | Generative AI / LLM | **Not present.** No Ollama, no summaries |
 
 **Known defects, stated plainly:**
-`personCount` over-reports (~20 track IDs for ~6 people — ByteTrack fragmentation on occlusion;
+`personCount` over-reports (~20 track IDs for ~6 people: ByteTrack fragmentation on occlusion;
 max-simultaneous-detections is the correct estimator). `QualityFactors` shows `blur: 0.0` and
-`occlusion: 0.0` in the API breakdown — blur *is* computed and *is* inside `Q_observability`,
+`occlusion: 0.0` in the API breakdown; blur *is* computed and *is* inside `Q_observability`,
 but the per-factor itemisation is not propagated through Module 7; occlusion is not computed
 at all and is reported as `unavailable` rather than faked.
 
 ---
 
-## 8. Roadmap — Ordered by Value per Hour
+## 8. Roadmap: Ordered by Value per Hour
 
 1. **Fix `personCount`** → max simultaneous detections. One aggregation change; removes a
    visibly wrong number.
