@@ -1,4 +1,4 @@
-# n8n report workflow — setup
+# n8n report workflow: setup
 
 Workflow: **drishti report** (`DkfTjHE8j78jOR36`)
 
@@ -8,11 +8,11 @@ deliver it.
 
 ## Three fixes needed in the n8n editor
 
-### 1. The IF node is miswired — the workflow cannot currently succeed
+### 1. The IF node is miswired: the workflow cannot currently succeed
 
 `Refuse Broken Chain` has **both** `Build HTML Report` and `Alert - Broken Chain`
 on its **true** output. So when the chain verifies, it builds the report *and*
-throws "REFUSED TO ISSUE REPORT" — every run fails.
+throws "REFUSED TO ISSUE REPORT", so every run fails.
 
 Drag the `Alert - Broken Chain` connection from the **true** output to the
 **false** output. True → Build HTML Report. False → Alert.
@@ -21,7 +21,7 @@ Drag the `Alert - Broken Chain` connection from the **true** output to the
 
 `build_html_report.js` in this folder. The version in the workflow never renders
 `awaitingReview`, so with 0 confirmed findings the document comes out with no
-findings and no evidence images at all — which is the normal state before a
+findings and no evidence images at all, which is the normal state before a
 review pass is done.
 
 Measured against the live payload:
@@ -38,7 +38,7 @@ The `Send Email` node has none, so delivery fails. Gmail needs an **App
 Password** (Google Account → Security → 2-Step Verification → App passwords);
 the account password will not work. Port 465 SSL or 587 STARTTLS.
 
-Also replace the placeholders — `demo@drishti.ai` and `invigilator@drishti.ai`
+Also replace the placeholders, `demo@drishti.ai` and `invigilator@drishti.ai`
 do not exist. For a demo, send to your own address.
 
 ## To trigger it from the app
@@ -62,7 +62,7 @@ n8n would reject.
 
 `GET /api/report?job=<id>` previews without side effects; `POST` issues and
 records. `&embed=1` inlines evidence images as base64 (~2.4-3 MB) so the
-document is self-contained — drop it and the HTML references `evidence.url`
+document is self-contained; drop it and the HTML references `evidence.url`
 instead, which needs the app running to render.
 
 ## PDF output
