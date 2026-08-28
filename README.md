@@ -236,10 +236,19 @@ minimum-frame requirement was originally 2 frames, commented as "~0.4s at
 0.2s, not two. On real footage this fired on a seated subject 44px wide,
 facing their own monitor, flagged for a "sustained" 0.2s turn that was pose
 jitter. Fixed to 5 frames (~0.8-1.0s) with the locomotion gate added at the
-same time. `detectHandGestures`, by contrast, still fires on a *single*
-frame with no minimum duration and no locomotion gate, diagnosed as the
-same class of bug, not yet fixed, and tracked honestly in
-`evaluation/ground_truth.json` rather than silently left in place.
+same time. `detectHandGestures` carried the same class of bug and has now
+had the same two gates applied: a raise must persist across
+`handRaiseMinFrames = 3` sampled frames (~0.4-0.5s), and the subject must
+not have travelled more than `handRaiseMaxLocomotion = 2.0` shoulder-widths
+across the event. The adjudications that motivated it are in
+`evaluation/ground_truth.json`: three of the six confirmed false positives
+were people walking down the aisle with an arm raised, and two findings came
+from a single frame each. Both gates are covered by tests in
+`m8_9_golang/pose_analysis_test.go`.
+
+The precision and recall in §7 predate this change and have not been
+re-measured, because doing so needs the source footage, which is not in this
+repository. They are left as measured rather than adjusted by estimate.
 
 ---
 

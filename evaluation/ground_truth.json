@@ -227,6 +227,8 @@
   "finding": "detectHandGestures in m8_9_golang/pose_analysis.go fires on a SINGLE frame whose wrist sits above the shoulder, with no minimum duration and no locomotion gate.",
   "contrast": "detectHeadTurns requires headTurnMinFrames=5 consecutive frames AND rejects the event when the subject travelled more than headTurnMaxLocomotion=2.0 shoulder-widths (pose_analysis.go:245, :282).",
   "consequence": "Anyone walking past with an arm raised - adjusting hair, carrying paper - trips it. 3 of the 6 confirmed false positives are people walking in the aisle; a 4th is a static resting posture that a duration gate would not fix but a seated-posture check would.",
-  "status": "diagnosed, not yet fixed"
+  "status": "FIXED. detectHandGestures now requires the raise to persist across handRaiseMinFrames=3 sampled frames and rejects any subject who travelled more than handRaiseMaxLocomotion=2.0 shoulder-widths across the event, mirroring the two gates detectHeadTurns already had. Covered by m8_9_golang/pose_analysis_test.go.",
+  "not_addressed": "The fourth false positive, a static resting posture, is untouched: neither gate applies to someone stationary with a hand genuinely above the shoulder line. That needs a seated-posture check, which the ankle occlusion noted at the top of pose_analysis.go makes unreliable at this resolution.",
+  "metrics_note": "The precision and recall in the README were measured before this fix and have not been recomputed. Re-running evaluation/score.py needs the source footage and pipeline_out/, neither of which is in the repository."
  }
 }

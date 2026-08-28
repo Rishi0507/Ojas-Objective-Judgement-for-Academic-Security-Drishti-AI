@@ -82,6 +82,41 @@ const CONTENT_TYPES: Record<string, string> = {
   '.avi': 'video/x-msvideo',
 };
 
+/**
+ * Roots a `path` parameter may resolve inside.
+ *
+ * Two, because playback legitimately spans both: clipUrl and annotatedClipUrl
+ * are rewritten app-root relative into pipeline_out/ (lib/pipelineJobs.ts), and
+ * the full-recording fallback is source_video_path, which is the uploaded file
+ * under uploads/ whenever no playback proxy was generated.
+ */
+const ALLOWED_ROOTS = ['pipeline_out', 'uploads'];
+
+/**
+ * Resolves a caller-supplied relative path and confines it to ALLOWED_ROOTS.
+ *
+ * path.join() alone does not do this: it normalises `../` rather than rejecting
+ * it, so a crafted `path` resolved out of the working directory and this route
+ * served the file back, for any file type, to anyone who could reach it. The
+ * containment test is the one already used by app/api/snapshot/route.ts.
+ *
+ * Comparing against `root + sep` rather than `root` matters: a bare prefix test
+ * would also accept a sibling directory whose name merely starts with an
+ * allowed one.
+ */
+function resolveWithinAllowedRoots(rel: string): string | null {
+  const cwd = process.cwd();
+  const full = path.resolve(cwd, rel);
+
+  for (const root of ALLOWED_ROOTS) {
+    const allowed = path.resolve(cwd, root);
+    if (full === allowed || full.startsWith(allowed + path.sep)) {
+      return full;
+    }
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -90,11 +125,22 @@ export async function GET(request: NextRequest) {
     if (!clipPath) {
       return NextResponse.json({ error: 'No path specified' }, { status: 400 });
     }
-    
-    // Construct full path
-    const fullPath = path.join(process.cwd(), clipPath);
+
+    const fullPath = resolveWithinAllowedRoots(clipPath);
+    if (!fullPath) {
+      // Deliberately not echoing the path back, and not distinguishing this
+      // from a miss beyond the status code: a traversal attempt should learn
+      // nothing about the filesystem it was aimed at.
+      console.warn(`[stream] rejected out-of-bounds path: ${clipPath}`);
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     
     if (!fs.existsSync(fullPath)) {
+      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+    }
+
+    // A directory has a size and would otherwise reach the range logic below.
+    if (!fs.statSync(fullPath).isFile()) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
     

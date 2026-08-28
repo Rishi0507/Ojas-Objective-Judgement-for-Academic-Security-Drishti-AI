@@ -69,6 +69,23 @@ const (
 	// Requiring clear separation avoids firing on someone resting a hand.
 	handRaiseMargin = 0.15
 
+	// A raised wrist must persist across this many sampled frames to count.
+	//
+	// There was previously no minimum at all: one frame with a wrist above the
+	// shoulder line produced a finding. That is the same class of bug that gave
+	// 0.20s "sustained" head turns before headTurnMinFrames was corrected, and
+	// the adjudications in evaluation/ground_truth.json show what it cost - a
+	// woman walking down the aisle with a hand at her own head, and a man
+	// leaning toward a staff member, each reported off a single frame.
+	//
+	// 3 frames spans two intervals, roughly 0.4-0.5s at the effective sample
+	// rate. A signal held up for a neighbour lasts at least that; a hand passing
+	// through the shoulder line on its way somewhere else does not. It is
+	// deliberately below headTurnMinFrames: a raise is a briefer act than a
+	// sustained look, and analyseMicroMotions records what happened the last
+	// time these two detectors were held to one shared minimum.
+	handRaiseMinFrames = 3
+
 	// hand_proximity was removed on request after review: on this footage its
 	// findings did not survive eyeball checking. The measured rework that
 	// preceded this removal (torso-length scaling, frame persistence,
@@ -429,47 +446,131 @@ func yawSignAt(poses []TrackedPose, frameIdx int) float64 {
 	return -1
 }
 
-// detectHandGestures reports a wrist lifted clearly above the shoulder line â€”
-// the signalling posture. Writing and page-turning keep hands low, so the
-// shoulder line separates the two well without needing gesture classification.
-func detectHandGestures(track PersonTrack, poses []TrackedPose) []Offence {
-	var offences []Offence
+// handRaiseMaxLocomotion is how far a subject may travel across an event,
+// in their own shoulder-widths, before a raised wrist stops counting as
+// evidence of signalling.
+//
+// The reasoning is headTurnMaxLocomotion's, applied to the other detector:
+// raising a hand is only informative for someone anchored to a desk. A person
+// crossing the hall raises an arm as a function of walking - adjusting hair,
+// carrying paper, reaching for a door - and reporting that measures locomotion,
+// not communication. evaluation/ground_truth.json records this directly: of the
+// six confirmed false positives on this footage, three are people walking in
+// the aisle with an arm up.
+//
+// It shares headTurnMaxLocomotion's value because it is calibrated from the
+// same measured travel table (walkers 4.34-8.91 shoulder-widths, seated tracks
+// 0.04-0.33), and is kept as a separate variable so the two detectors can be
+// tuned apart once there is footage that justifies it. The same caveat applies:
+// this footage contains no stationary population to calibrate the low end
+// against.
+var handRaiseMaxLocomotion = 2.0
 
-	for _, tp := range poses {
-		lSho, okL := joint(tp.Pose, "left_shoulder")
-		rSho, okR := joint(tp.Pose, "right_shoulder")
-		if !okL || !okR {
-			continue
-		}
-		shoulderY := (lSho.Y + rSho.Y) / 2
-		shoulderWidth := math.Abs(lSho.X - rSho.X)
-		if shoulderWidth < 1 {
-			continue
-		}
-
-		for _, side := range []string{"left_wrist", "right_wrist"} {
-			wrist, ok := joint(tp.Pose, side)
-			if !ok {
-				continue
-			}
-			// Image Y grows downward, so "above" is a smaller Y.
-			lift := (shoulderY - wrist.Y) / shoulderWidth
-			if lift > handRaiseMargin {
-				offences = append(offences, Offence{
-					Type:       "hand_gesture",
-					Label:      "Hand raised above shoulder (possible signalling)",
-					TrackID:    track.TrackID,
-					StartSec:   tp.TimestampSec,
-					EndSec:     tp.TimestampSec,
-					FrameIdx:   tp.FrameIdx,
-					Confidence: math.Min(1.0, wrist.Conf),
-				})
-				return offences // one report per track is enough
-			}
-		}
+// wristLift measures how far the higher of the two wrists sits above the
+// shoulder line, in shoulder widths, and returns that wrist's own confidence.
+// Image Y grows downward, so "above" is a smaller Y.
+//
+// Split out of detectHandGestures so the per-frame measurement is separable
+// from the run-length and locomotion gating around it.
+func wristLift(p YOLOPose) (lift float64, conf float64, ok bool) {
+	lSho, okL := joint(p, "left_shoulder")
+	rSho, okR := joint(p, "right_shoulder")
+	if !okL || !okR {
+		return 0, 0, false
+	}
+	shoulderY := (lSho.Y + rSho.Y) / 2
+	shoulderWidth := math.Abs(lSho.X - rSho.X)
+	if shoulderWidth < 1 {
+		return 0, 0, false
 	}
 
-	return offences
+	var best, bestConf float64
+	found := false
+	for _, side := range []string{"left_wrist", "right_wrist"} {
+		wrist, okW := joint(p, side)
+		if !okW {
+			continue
+		}
+		l := (shoulderY - wrist.Y) / shoulderWidth
+		if !found || l > best {
+			best, bestConf, found = l, wrist.Conf, true
+		}
+	}
+	if !found {
+		return 0, 0, false
+	}
+	return best, bestConf, true
+}
+
+// detectHandGestures reports a wrist held clearly above the shoulder line -
+// the signalling posture. Writing and page-turning keep hands low, so the
+// shoulder line separates the two well without needing gesture classification.
+//
+// Two gates stand between that measurement and a finding, both added after
+// adjudication showed the ungated version reporting people who were simply
+// walking past with an arm up: the raise must persist (handRaiseMinFrames) and
+// the subject must be roughly stationary (handRaiseMaxLocomotion).
+func detectHandGestures(track PersonTrack, poses []TrackedPose) []Offence {
+	// Travel is measured once over the whole event rather than per run, for the
+	// reason set out at headTurnMaxLocomotion: a raise lasts well under a
+	// second, in which even a walker covers barely one shoulder-width, so the
+	// run window cannot separate a signal from a stride.
+	moved, movedOK := locomotionDuring(poses, 0, 1<<30)
+	walking := movedOK && moved > handRaiseMaxLocomotion
+
+	consecutive := 0
+	var startTime, endTime float64
+	var peakLift, peakConf float64
+	var peakFrame int
+
+	// report closes out a completed run. It returns nil for a subject who was
+	// travelling: the locomotion measure spans the event, so every other run in
+	// this event would be dropped for the same reason.
+	report := func() []Offence {
+		if walking {
+			log.Printf("[hand_gesture] %s @%.2fs dropped: subject travelled %.1f shoulder-widths during this event, so the raise measures locomotion",
+				track.TrackID, startTime, moved)
+			return nil
+		}
+		return []Offence{{
+			Type:        "hand_gesture",
+			Label:       "Hand raised above shoulder (possible signalling)",
+			TrackID:     track.TrackID,
+			StartSec:    startTime,
+			EndSec:      endTime,
+			FrameIdx:    peakFrame,
+			Confidence:  math.Min(1.0, peakConf),
+			DurationSec: endTime - startTime,
+		}}
+	}
+
+	for _, tp := range poses {
+		lift, conf, ok := wristLift(tp.Pose)
+		if ok && lift > handRaiseMargin {
+			if consecutive == 0 {
+				startTime = tp.TimestampSec
+				peakLift, peakConf, peakFrame = lift, conf, tp.FrameIdx
+			}
+			consecutive++
+			endTime = tp.TimestampSec
+			if lift > peakLift {
+				peakLift, peakConf, peakFrame = lift, conf, tp.FrameIdx
+			}
+			continue
+		}
+
+		if consecutive >= handRaiseMinFrames {
+			return report() // one report per track is enough
+		}
+		consecutive = 0
+	}
+
+	// A raise still in progress when the event ends.
+	if consecutive >= handRaiseMinFrames {
+		return report()
+	}
+
+	return nil
 }
 
 // torsoLength is the shoulder-line-to-hip-line distance: a size measure that
@@ -545,8 +646,8 @@ func analyseMicroMotions(tracks []PersonTrack, posesByTrack map[string][]Tracked
 			continue
 		}
 		// Each detector applies its own minimum, and they are not the same:
-		// a head turn needs a baseline plus a sustained run, while a raised
-		// wrist is visible in a single frame.
+		// a head turn needs a baseline plus a run of headTurnMinFrames, while a
+		// raised wrist needs only handRaiseMinFrames and no baseline at all.
 		//
 		// This guard used to be `< headTurnMinFrames`, which silently coupled
 		// them. Raising that constant from 2 to 5 then stopped hand gestures

@@ -21,7 +21,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       const res = await fetch('/api/data/clear', { method: 'DELETE' })
       if (!res.ok) {
-        throw new Error('Failed to clear data')
+        // Surface the server's reason. This route refuses to delete anything
+        // when the custody ledger cannot record the deletion, and "Failed to
+        // clear data" would leave a reviewer with no idea that the refusal was
+        // deliberate or that their data is still intact.
+        const reason = await res
+          .json()
+          .then((body) => body?.error as string | undefined)
+          .catch(() => undefined)
+        throw new Error(reason || 'Failed to clear data')
       }
       // Force a hard reload to reset all dashboard states and hooks
       window.location.reload()
