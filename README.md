@@ -1,6 +1,6 @@
 # OJAS: Objective Judgement for Academic Sincerity
 
-**Offline exam-hall video analytics. Built for PS2 (DrishtiAI Hackathon).**
+**Offline exam-hall video analytics.**
 
 > **Positioning, stated first because it constrains every choice below:**
 > this is an *investigation support tool*, not an automatic cheating detector.
